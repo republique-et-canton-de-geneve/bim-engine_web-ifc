@@ -1,6 +1,6 @@
 {
   "name": "@bim/web-ifc",
-  "version": "0.0.58",
+  "version": "0.0.58-ege.0",
   "description": "ifc loading on the web",
   "module": "./web-ifc-api.js",
   "main": "./web-ifc-api-node.js",
