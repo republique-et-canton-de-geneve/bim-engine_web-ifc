@@ -984,6 +984,17 @@ export class IfcAPI {
         return this.wasmModule.IsModelOpen(modelID);
     }
 
+    CreateAllMeshesStreamingSession(modelID: number) {
+        this.wasmModule.CreateAllMeshesStreamingSession(modelID);
+
+        const wasmModule = this.wasmModule;
+        return {
+            next() {
+                return wasmModule.AllMeshesStreamingSessionNext();
+            }
+        }
+    }
+
     /**
      * Load all geometry in a model
      * @param modelID Model handle retrieved by OpenModel
