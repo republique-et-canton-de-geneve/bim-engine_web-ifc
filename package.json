@@ -12,6 +12,9 @@
       "browser": "./web-ifc-api.js"
     }
   },
+  "publishConfig": {
+    "registry": "https://npmnexus.prod.etat-ge.ch/ctinexus/content/repositories/npm_release/"
+  },
   "pckg-gui": {},
   "scripts": {
     "gen-schema": "cd src/schema-generator && ts-node gen_functional_types.ts",
@@ -20,7 +23,7 @@
     "build-release": "npm run build-wasm-release && npm run build-api && npm run build-cleanup",
     "build-cleanup": "rimraf dist/helpers/log.ts && rimraf dist/helpers/properties.ts && rimraf dist/web-ifc-api.ts && rimraf dist/ifc-schema.ts",
     "build-debug": "npm run build-wasm-debug && npm run build-api && npm run build-cleanup",
-    "publish-repo": "npm run set-version && cd dist && npm publish",
+    "publish-repo": "cpy ./npmrc ./dist/  --rename=.npmrc  && cd dist && npm publish",
     "build-publish-repo": "npm run build-release && cpy ./npmrc ./dist/  --rename=.npmrc && cd dist && npm publish",
     "copy-to-dist": "make-dir dist && cpy \"src/cpp/build_wasm/*.js\" dist &&  cpy \"src/cpp/build_wasm/*.wasm\" dist ",
     "copy-debug-to-dist": "make-dir dist && cpy \"src/cpp/build_wasm_debug/*.js\" dist &&  cpy \"src/cpp/build_wasm_debug/*.wasm\" dist ",

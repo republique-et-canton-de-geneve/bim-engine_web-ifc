@@ -10,7 +10,7 @@ namespace webifc::geometry
         // Types initialization
         for (auto &type : manager.GetSchemaManager().GetIfcElementList())
         {
-            if (type == webifc::schema::IFCOPENINGELEMENT || type == webifc::schema::IFCSPACE || type == webifc::schema::IFCOPENINGSTANDARDCASE)
+            if (type == webifc::schema::IFCOPENINGELEMENT /*|| type == webifc::schema::IFCSPACE */ || type == webifc::schema::IFCOPENINGSTANDARDCASE)
             {
                 continue;
             }
