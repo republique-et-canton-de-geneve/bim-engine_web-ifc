@@ -12,6 +12,8 @@
 #include <spdlog/spdlog.h>
 #include "modelmanager/ModelManager.h"
 #include "version.h"
+#include "geometry/ifcMeshesStreamingSession.h"
+#include "optional";
 
 namespace webifc::parsing
 {
