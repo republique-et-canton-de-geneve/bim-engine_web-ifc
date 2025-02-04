@@ -3,9 +3,9 @@
         {
             "name": "Win32",
             "includePath": [
-                "${workspaceFolder}/**",
-                "${workspaceFolder}/src/cpp",
-                "D:/Emscripten/emsdk/upstream/emscripten/system/include"
+                "${workspaceFolder}/src/cpp/**",
+                "D:/emscripten/emsdk/upstream/emscripten/system/include",
+                "C:/MinGW/lib/gcc/mingw32/6.3.0/include/**"
             ],
             "defines": [
                 "_DEBUG",
@@ -13,11 +13,14 @@
                 "_UNICODE"
             ],
             "windowsSdkVersion": "10.0.22000.0",
-            "compilerPath": "cl.exe",
+            "compilerPath": "C:/MinGW/bin/g++.exe",
             "cStandard": "c17",
             "cppStandard": "c++17",
-            "intelliSenseMode": "windows-msvc-x64",
-            "configurationProvider": "ms-vscode.cmake-tools"
+            "intelliSenseMode": "${default}",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "compilerArgs": [
+                "-include cstdint"
+            ]
         }
     ],
     "version": 4
