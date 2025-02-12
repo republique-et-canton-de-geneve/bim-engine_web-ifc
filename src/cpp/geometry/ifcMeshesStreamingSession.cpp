@@ -45,10 +45,19 @@ namespace webifc::geometry
                 _currentExpressIDIndex = 0;
             }
 
-            // read the mesh from IFC
+            // Read the mesh from IFC
             auto mesh = geometryProcessor->GetFlatMesh(_currentTypeExpressIDs.at(_currentExpressIDIndex++));
 
-            // prepare the geometry data
+            // Check if the current type is IFCSPACE and override color if necessary
+            if (_types.at(_currentTypeIndex) == webifc::schema::IFCSPACE)
+            {
+                for (auto &geom : mesh.geometries)
+                {
+                    geom.color = glm::dvec4(1.0, 0.5, 0.0, 0.5); // Orange with 50% transparency
+                }
+            }
+
+            // Prepare the geometry data
             for (auto &geom : mesh.geometries)
             {
                 auto &flatGeom = geometryProcessor->GetGeometry(geom.geometryExpressID);
@@ -62,7 +71,7 @@ namespace webifc::geometry
                 return item;
             }
 
-            // clear geometry, freeing memory, client is expected to have consumed the data
+            // Clear geometry, freeing memory, client is expected to have consumed the data
             geometryProcessor->Clear();
         }
     };

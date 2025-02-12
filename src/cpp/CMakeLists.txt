@@ -66,8 +66,23 @@ FetchContent_Declare(cdt GIT_REPOSITORY "https://github.com/artem-ogre/CDT" GIT_
 FetchContent_MakeAvailable(cdt)
 FetchContent_GetProperties(cdt)
 
+# Message("Downloading fmt (v8.1.1)")
+# FetchContent_Declare(
+#     fmt
+#     GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
+#     GIT_TAG "22701d5f63fd9ba3ffa35fe94585b5bfcb69238b"  # Set to the last known working version
+# )
+# FetchContent_MakeAvailable(fmt)
+# FetchContent_GetProperties(fmt)
+
 Message("Downloading spdlog")
-FetchContent_Declare(spdlog GIT_REPOSITORY "https://github.com/gabime/spdlog" GIT_TAG "7e635fca68d014934b4af8a1cf874f63989352b7" SOURCE_SUBDIR "../")
+FetchContent_Declare(
+    spdlog
+    GIT_REPOSITORY "https://github.com/gabime/spdlog"
+    # GIT_TAG "7e635fca68d014934b4af8a1cf874f63989352b7"
+    GIT_TAG "f355b3d58f7067eee1706ff3c801c2361011f3d5"
+)
+# set(SPDLOG_FMT_EXTERNAL ON)  # Ensure spdlog uses the fmt version we downloaded
 FetchContent_MakeAvailable(spdlog)
 FetchContent_GetProperties(spdlog)
 
