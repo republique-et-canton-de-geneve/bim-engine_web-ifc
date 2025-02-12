@@ -20,6 +20,17 @@ namespace webifc::geometry
     ReadLinearScalingFactor();
   }
 
+  void IfcGeometryLoader::ResetCache() {
+      _relVoidRel = PopulateRelVoidsRelMap();
+      _relVoids = PopulateRelVoidsMap();
+      _relAggregates = PopulateRelAggregatesMap();
+      _relNests = PopulateRelNestsMap();
+      _relElementAggregates = PopulateRelElementAggregatesMap();
+      _styledItems = PopulateStyledItemMap();
+      _relMaterials = PopulateRelMaterialsMap();
+      _materialDefinitions = PopulateMaterialDefinitionsMap();
+  }
+
   void IfcGeometryLoader::Clear() const{
       _expressIDToPlacement.clear();
       std::unordered_map<uint32_t, glm::dmat4>().swap(_expressIDToPlacement);
@@ -1435,6 +1446,27 @@ namespace webifc::geometry
       double x = _loader.GetDoubleArgument();
       double y = _loader.GetDoubleArgument();
       double z = _loader.GetDoubleArgument();
+
+/*
+        Round all coordinates, after they are read, to a specified number of decimal places.
+        For example, if the rounding is to be in the fourth decimal place, then set
+            ROUNDING = 1.0E-04
+        and
+            ROUNDING_RECIPROCAL = 1.0E+04.
+
+        To disable/enable rounding, set ROUNDING_ENABLE to 0/1.  This value is set in EPS.h.
+*/
+    if (ROUNDING_ENABLE == 1)
+    {
+        int q = 0;
+        q = (int)(x * ROUNDING_RECIPROCAL + 0.5);
+        x = q * ROUNDING;
+        q = (int)(y * ROUNDING_RECIPROCAL + 0.5);
+        y = q * ROUNDING;
+        q = (int)(z * ROUNDING_RECIPROCAL + 0.5);
+        z = q * ROUNDING;
+    }
+
       result.emplace_back(x, y, z);
 
       // read point set end
@@ -1785,6 +1817,10 @@ namespace webifc::geometry
         if(typePlacement == schema::IFCAXIS2PLACEMENT3D)
         {
           dimensions = 3;
+        }
+        if(typePlacement == schema::IFCAXIS2PLACEMENT2D)
+        {
+          dimensions = 2;
         }
 
         _loader.MoveToArgumentOffset(expressID, 0);

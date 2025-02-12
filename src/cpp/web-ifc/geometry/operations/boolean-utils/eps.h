@@ -13,7 +13,7 @@ constexpr double EPS_MINISCULE  = 1.0E-12;
 constexpr double EPS_TINY       = 1.0E-04;
 constexpr double EPS_SMALL      = 1.0E-04;
 constexpr double EPS_BIG        = 1.0E-04;
-constexpr double EPS_BIG2       = 1.0E-04;
+constexpr double EPS_BIG2       = 1.0E-03;
 constexpr double SCALED_EPS_BIG = 1.0E-04;
 
 /*
@@ -32,6 +32,11 @@ constexpr double toleranceCollinear      = 1.0E-04;
     Constants used in shared-position
 */    
 constexpr double tolerancePointOnLine     = 1.0E-04;
+
+/*
+    Constants used in aabb.h
+*/    
+constexpr double toleranceAABB     = 1.0E-03;
 
 /*
     Constants used in function intersect_ray_triangle
@@ -60,7 +65,7 @@ constexpr double toleranceAddFace = 1.0E-10;
             
         To disable/enable rounding, set ROUNDING_ENABLE to 0/1.            
 */                    
-constexpr int    ROUNDING_ENABLE     = 1;
+constexpr int    ROUNDING_ENABLE     = 0;
 constexpr double ROUNDING            = 1.0E-04;
 constexpr double ROUNDING_RECIPROCAL = 1.0E+04;
 

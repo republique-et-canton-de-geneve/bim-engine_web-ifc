@@ -10,9 +10,9 @@
 #include <memory>
 #include <emscripten/bind.h>
 #include <spdlog/spdlog.h>
-#include "modelmanager/ModelManager.h"
-#include "version.h"
-#include "geometry/ifcMeshesStreamingSession.h"
+#include "../web-ifc/modelmanager/ModelManager.h"
+#include "../version.h"
+#include "../web-ifc/geometry/ifcMeshesStreamingSession.h"
 #include "optional";
 
 namespace webifc::parsing
@@ -374,15 +374,8 @@ bool ValidateExpressID(uint32_t modelID, uint32_t expressId)
     return manager.IsModelOpen(modelID) ? manager.GetIfcLoader(modelID)->IsValidExpressID(expressId) : false;
 }
 
-void ExtendLineStorage(uint32_t modelID, uint32_t lineStorageSize)
-{
-    if (manager.IsModelOpen(modelID))
-        manager.GetIfcLoader(modelID)->ExtendLineStorage(lineStorageSize);
-}
-
-uint32_t GetNextExpressID(uint32_t modelID, uint32_t expressId)
-{
-    return manager.IsModelOpen(modelID) ? manager.GetIfcLoader(modelID)->GetNextExpressID(expressId) : 0;
+uint32_t GetNextExpressID(uint32_t modelID, uint32_t expressId) {
+    return manager.IsModelOpen(modelID) ?  manager.GetIfcLoader(modelID)->GetNextExpressID(expressId) : 0;
 }
 
 std::vector<uint32_t> GetAllLines(uint32_t modelID)
@@ -453,12 +446,9 @@ bool WriteSet(uint32_t modelID, emscripten::val &val)
     for (size_t i = 0; i < size; i++)
     {
         emscripten::val child = val[std::to_string(i)];
-        if (child.isNull())
-            loader->Push<uint8_t>(webifc::parsing::IfcTokenType::EMPTY);
-        else if (child.isUndefined())
-            loader->Push<uint8_t>(webifc::parsing::IfcTokenType::EMPTY);
-        else if (child.isArray())
-            WriteSet(modelID, child);
+        if (child.isNull()) loader->Push<uint8_t>(webifc::parsing::IfcTokenType::EMPTY);
+        else if (child.isUndefined()) loader->Push<uint8_t>(webifc::parsing::IfcTokenType::UNKNOWN);
+        else if (child.isArray()) WriteSet(modelID,child);
         else if (child["value"].isArray())
         {
 
@@ -815,8 +805,11 @@ std::string DecodeText(std::string text)
     return webifc::parsing::p21decode(strView);
 }
 
-EMSCRIPTEN_BINDINGS(my_module)
-{
+void ResetCache(uint32_t modelID) {
+    if (manager.IsModelOpen(modelID)) manager.GetGeometryProcessor(modelID)->GetLoader().ResetCache();
+}
+
+EMSCRIPTEN_BINDINGS(my_module) {
 
     emscripten::class_<webifc::geometry::IfcGeometry>("IfcGeometry")
         .constructor<>()
@@ -911,7 +904,6 @@ EMSCRIPTEN_BINDINGS(my_module)
 
     emscripten::register_vector<double>("DoubleVector");
 
-    emscripten::function("ExtendLineStorage", &ExtendLineStorage);
     emscripten::function("LoadAllGeometry", &LoadAllGeometry);
     emscripten::function("GetAllCrossSections", &GetAllCrossSections);
     emscripten::function("GetAllAlignments", &GetAllAlignments);
