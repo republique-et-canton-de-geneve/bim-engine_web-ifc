@@ -4,6 +4,7 @@
 #include <map>
 #include <unordered_map>
 #include <set>
+#include <ranges>
 
 #include <glm/glm.hpp>
 
@@ -196,16 +197,13 @@ namespace fuzzybools
 
         //============================================================================================
 
-        std::vector<std::pair<size_t, size_t>> GetSegments() const
+        auto GetSegments() const
         {
-            std::vector<std::pair<size_t, size_t>> retval;
+            const auto makeSegments = [&](int i) {
+                return std::make_pair(points[i - 1].second, points[i].second);
+            };
 
-            for (size_t i = 1; i < points.size(); i++)
-            {
-                retval.push_back(std::make_pair(points[i - 1].second, points[i].second));
-            }
-
-            return retval;
+            return std::views::iota(size_t(1), points.size()) | std::views::transform(makeSegments);
         }
 
         std::vector<std::pair<double, size_t>> points;
@@ -954,13 +952,13 @@ namespace fuzzybools
                 if (isA)
                 {
 #ifdef CSG_DEBUG_OUTPUT
-                    // DumpGeometry(geom, L"Initial_A.obj");
+//                    DumpGeometry(geom, L"Initial_A.obj");
 #endif
                 }
                 else
                 {
 #ifdef CSG_DEBUG_OUTPUT
-                    // DumpGeometry(geom, L"Initial_B.obj");
+//                    DumpGeometry(geom, L"Initial_B.obj");
 #endif
                 }
 
@@ -969,7 +967,7 @@ namespace fuzzybools
                 auto c = geom.GetPoint(f.i2);
 
 #ifdef CSG_DEBUG_OUTPUT
-                relevant.AddFace(a, b, c, -1);
+//                relevant.AddFace(a, b, c, -1);
 #endif
 
                 Vec3 norm;
@@ -1064,14 +1062,14 @@ namespace fuzzybools
             }
 
 #ifdef CSG_DEBUG_OUTPUT
-            if (isA)
-            {
-                DumpGeometry(relevant, L"relevantA.obj");
-            }
-            else
-            {
-                DumpGeometry(relevant, L"relevantB.obj");
-            }
+            // if (isA)
+            // {
+            //     DumpGeometry(relevant, L"relevantA.obj");
+            // }
+            // else
+            // {
+            //     DumpGeometry(relevant, L"relevantB.obj");
+            // }
 #endif
         }
 
@@ -1123,11 +1121,11 @@ namespace fuzzybools
                 }
             }
 
-            std::sort(
-                points.begin(), points.end(), [&](const double &left, const double &right)
-                { return left < right; });
+            const auto double_less = +[](double left, double right) { return left < right; };
+            std::sort(points.begin(), points.end(), double_less);
 
             std::vector<std::pair<double, double>> result;
+            result.reserve(points.size() * 2);
 
             for (size_t i = 1; i < points.size(); i++)
             {
@@ -1146,7 +1144,7 @@ namespace fuzzybools
         {
             std::vector<std::pair<size_t, double>> pointsInOrder;
 
-            for (auto &segment : l.GetSegments())
+            for (auto segment : l.GetSegments())
             {
                 if (!l.IsPointOnLine(points[segment.first].location3D))
                 {
@@ -1230,9 +1228,13 @@ namespace fuzzybools
             auto basis = p.MakeBasis();
 
             std::unordered_map<size_t, size_t> pointToProjectedPoint;
+            pointToProjectedPoint.reserve(pointsOnPlane.size());
+
             std::unordered_map<size_t, size_t> projectedPointToPoint;
+            projectedPointToPoint.reserve(pointsOnPlane.size());
 
             std::vector<glm::dvec2> projectedPoints;
+            projectedPoints.reserve(pointsOnPlane.size());
 
             for (auto &pointId : pointsOnPlane)
             {
@@ -1290,19 +1292,22 @@ namespace fuzzybools
             }
 
 #ifdef CSG_DEBUG_OUTPUT
-            std::vector<std::vector<glm::dvec2>> edgesPrinted;
+            // std::vector<std::vector<glm::dvec2>> edgesPrinted;
 
-            for (auto &e : edges)
-            {
-                edgesPrinted.push_back({projectedPoints[e.first], projectedPoints[e.second]});
-            }
+            // for (auto &e : edges)
+            // {
+            //     edgesPrinted.push_back({projectedPoints[e.first], projectedPoints[e.second]});
+            // }
 
-            DumpSVGLines(edgesPrinted, L"poly.html");
+            // DumpSVGLines(edgesPrinted, L"poly.html");
 #endif
 
             CDT::Triangulation<double> cdt(CDT::VertexInsertionOrder::AsProvided);
             std::vector<CDT::Edge> cdt_edges;
+			cdt_edges.reserve(edges.size());
+
             std::vector<CDT::V2d<double>> cdt_verts;
+			cdt_verts.reserve(projectedPoints.size());
 
             for (auto &point : projectedPoints)
             {
@@ -1585,10 +1590,11 @@ namespace fuzzybools
             }
         }
 
-        auto Astart = lineA.origin + lineA.direction * size;
-        auto Aend = lineA.origin - lineA.direction * size;
+        auto Astart = lineA.origin + lineA.direction * (size * 2);
+        auto Aend = lineA.origin - lineA.direction * (size * 2);
 
         std::vector<double> distances;
+        distances.reserve(p.lines.size());
 
         // line B is expected to have the segments already filled, line A is not
         for (auto &line : p.lines)
@@ -1605,7 +1611,7 @@ namespace fuzzybools
                     sp.points[seg.first].location3D,
                     sp.points[seg.second].location3D);
 
-                if (result.distance < SCALED_EPS_BIG)
+                if (result.distance < _tolerancePlaneIntersection)
                 {
                     if (!p.aabb.contains(sp.points[seg.first].location3D))
                     {
@@ -1634,7 +1640,7 @@ namespace fuzzybools
                         }
                     }
 
-                    if (!equals(pt, result.point2, SCALED_EPS_BIG))
+                    if (!equals(pt, result.point2, _tolerancePlaneIntersection))
                     {
                         if (messages)
                         {
@@ -1645,13 +1651,8 @@ namespace fuzzybools
             }
         }
 
-        std::sort(
-            distances.begin(),
-            distances.end(),
-            [&](const double &left, const double &right)
-            {
-                return left < right;
-            });
+        const auto double_less = +[](double left, double right) { return left < right; };
+        std::sort(distances.begin(), distances.end(), double_less);
 
         distances.erase(std::unique(distances.begin(), distances.end()), distances.end());
 
@@ -1662,9 +1663,9 @@ namespace fuzzybools
 
     inline void AddLineLineIntersections(Plane &p, SharedPosition &sp, Line &lineA, Line &lineB)
     {
-        for (auto &segA : lineA.GetSegments())
+        for (auto segA : lineA.GetSegments())
         {
-            for (auto &segB : lineB.GetSegments())
+            for (auto segB : lineB.GetSegments())
             {
                 // check isect A vs B
                 if (!p.HasOverlap(segA, segB))
@@ -1811,71 +1812,68 @@ namespace fuzzybools
             AddLineLineIsects(plane, sp);
         }
 
-        if (true)
+        // intersect planes
+        for (size_t planeAIndex = 0; planeAIndex < sp.planes.size(); planeAIndex++)
         {
-            // intersect planes
-            for (size_t planeAIndex = 0; planeAIndex < sp.planes.size(); planeAIndex++)
+            for (size_t planeBIndex = 0; planeBIndex < sp.planes.size(); planeBIndex++)
             {
-                for (size_t planeBIndex = 0; planeBIndex < sp.planes.size(); planeBIndex++)
+                auto &planeA = sp.planes[planeAIndex];
+                auto &planeB = sp.planes[planeBIndex];
+
+                if (!planeA.aabb.intersects(planeB.aabb))
                 {
-                    auto &planeA = sp.planes[planeAIndex];
-                    auto &planeB = sp.planes[planeBIndex];
+                    continue;
+                }
 
-                    if (!planeA.aabb.intersects(planeB.aabb))
+                // plane intersect results in new lines
+                // new lines result in new line intersects
+                // new line intersects result in new points
+
+                if (std::fabs(glm::dot(planeA.normal, planeB.normal)) > 1.0 - EPS_BIG)
+                {
+                    // parallel planes, don't care
+                    continue;
+                }
+
+                // calculate plane intersection line
+                auto result = PlanePlaneIsect(planeA.normal, planeA.distance, planeB.normal, planeB.distance);
+
+                // TODO: invalid temp line object
+                Line intersectionLine;
+                intersectionLine.origin = result.pos;
+                intersectionLine.direction = result.dir;
+
+                if (!planeA.IsPointOnPlane(intersectionLine.origin) || !planeA.IsPointOnPlane(intersectionLine.origin + intersectionLine.direction * 1000.))
+                {
+                    if (messages)
                     {
-                        continue;
+                        printf("Bad isect line in Normalize\n");
                     }
-
-                    // plane intersect results in new lines
-                    // new lines result in new line intersects
-                    // new line intersects result in new points
-
-                    if (std::fabs(glm::dot(planeA.normal, planeB.normal)) > 1.0 - EPS_BIG)
+                }
+                if (!planeB.IsPointOnPlane(intersectionLine.origin) || !planeB.IsPointOnPlane(intersectionLine.origin + intersectionLine.direction * 1000.))
+                {
+                    if (messages)
                     {
-                        // parallel planes, don't care
-                        continue;
+                        printf("Bad isect line in Normalize\n");
                     }
+                }
 
-                    // calculate plane intersection line
-                    auto result = PlanePlaneIsect(planeA.normal, planeA.distance, planeB.normal, planeB.distance);
+                // get all intersection points with the shared line and both planes
+                auto isectA = ComputeInitialIntersections(planeA, sp, intersectionLine);
+                auto isectB = ComputeInitialIntersections(planeB, sp, intersectionLine);
 
-                    // TODO: invalid temp line object
-                    Line intersectionLine;
-                    intersectionLine.origin = result.pos;
-                    intersectionLine.direction = result.dir;
+                // from these, figure out the shared segments on the current line produced by these two planes
+                auto segments = sp.BuildSegments(isectA, isectB);
 
-                    if (!planeA.IsPointOnPlane(intersectionLine.origin) || !planeA.IsPointOnPlane(intersectionLine.origin + intersectionLine.direction * 1000.))
-                    {
-                        if (messages)
-                        {
-                            printf("Bad isect line in Normalize\n");
-                        }
-                    }
-                    if (!planeB.IsPointOnPlane(intersectionLine.origin) || !planeB.IsPointOnPlane(intersectionLine.origin + intersectionLine.direction * 1000.))
-                    {
-                        if (messages)
-                        {
-                            printf("Bad isect line in Normalize\n");
-                        }
-                    }
-
-                    // get all intersection points with the shared line and both planes
-                    auto isectA = ComputeInitialIntersections(planeA, sp, intersectionLine);
-                    auto isectB = ComputeInitialIntersections(planeB, sp, intersectionLine);
-
-                    // from these, figure out the shared segments on the current line produced by these two planes
-                    auto segments = sp.BuildSegments(isectA, isectB);
-
-                    if (segments.empty())
-                    {
-                        // nothing resulted from this plane-plane intersection
-                        continue;
-                    }
-                    else
-                    {
-                        AddSegments(planeA, sp, intersectionLine, segments);
-                        AddSegments(planeB, sp, intersectionLine, segments);
-                    }
+                if (segments.empty())
+                {
+                    // nothing resulted from this plane-plane intersection
+                    continue;
+                }
+                else
+                {
+                    AddSegments(planeA, sp, intersectionLine, segments);
+                    AddSegments(planeB, sp, intersectionLine, segments);
                 }
             }
         }
@@ -1903,7 +1901,43 @@ namespace fuzzybools
         Geometry geom;
         for (auto &plane : sp.planes)
         {
+
+            #ifdef CSG_DEBUG_OUTPUT
+                // std::vector<std::vector<glm::dvec2>> edges;
+
+                // auto basis = plane.MakeBasis();
+
+                // for (auto& line : plane.lines) {
+                //     // Get line parameters
+                //     auto origin = line.origin;      // 3D point (glm::dvec3)
+                //     auto direction = line.direction; // 3D vector (glm::dvec3)
+                    
+                //     // Convert each distance to a 3D point along the line
+                //     std::vector<glm::dvec2> lineSegments;
+                //     for (auto distance : line.points) {
+                //         glm::dvec3 point3D = origin + glm::dvec3(direction.x * distance.first, direction.y * distance.first, direction.z * distance.first);  // 3D calculation
+                //         glm::dvec2 point2D = basis.project(point3D);        // Project to 2D
+                //         lineSegments.push_back(point2D);
+                //     }
+                    
+                //     // Create edges between consecutive points
+                //     for (size_t i = 0; i < lineSegments.size() - 1; ++i) {
+                //         edges.push_back({ 
+                //             lineSegments[i], 
+                //             lineSegments[i + 1] 
+                //         });
+                //     }
+                // }
+
+                // DumpSVGLines(edges, L"contour.html");
+            #endif
+
             sp.TriangulatePlane(geom, plane);
+
+            #ifdef CSG_DEBUG_OUTPUT
+                // DumpGeometry(geom, L"triangulated.obj");
+            #endif
+
         }
 
         for (auto &plane : A.planes)

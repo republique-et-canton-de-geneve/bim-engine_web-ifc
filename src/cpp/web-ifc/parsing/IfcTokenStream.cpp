@@ -9,7 +9,7 @@
 namespace webifc::parsing
 {
 
-  IfcTokenStream::IfcTokenStream(const size_t chunkSize, const size_t maxChunks) 
+  IfcTokenStream::IfcTokenStream(const size_t chunkSize, const uint64_t maxChunks) 
   :  _chunkSize(chunkSize), _maxChunks(maxChunks)
   { 
     _cChunk=nullptr;
@@ -96,7 +96,7 @@ namespace webifc::parsing
   
   void IfcTokenStream::checkMemory()
   {
-    if (_activeChunks == _maxChunks){
+    if (_maxChunks != 0 && _activeChunks == _maxChunks){
       for (uint32_t x = 0; x < _chunks.size(); x++) 
       {
         if (_chunks[x].IsLoaded())
@@ -158,5 +158,13 @@ namespace webifc::parsing
   {
       return _cChunk->GetTokenRef() + _readPtr;
   }
-  
+
+  IfcTokenStream * IfcTokenStream::Clone() {
+    IfcTokenStream * newStream = new IfcTokenStream(_activeChunks,_maxChunks,_chunks,_fileStream->Clone());
+    return newStream;
+  }
+
+  IfcTokenStream::IfcTokenStream(size_t activeChunks, uint64_t maxChunks, std::vector<IfcTokenStream::IfcTokenChunk> &chunks,IfcTokenStream::IfcFileStream * fileStream) : _activeChunks(activeChunks), _maxChunks(maxChunks), _chunks(chunks),  _cChunk(&chunks[0]), _fileStream(fileStream)
+  {}
+
 }

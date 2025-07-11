@@ -16,11 +16,17 @@
 namespace webifc::parsing {
 
   void p21encode(std::string_view input, std::ostringstream &output);
-  std::string p21decode(std::string_view & str);    
+  std::string p21decode(std::string_view & str);
+  std::string generateStringUUID();
+  std::string expandIfcGuid(const std::string_view &guid);
+  std::string compressIfcGuid(const std::string& guid);
  
-   IfcLoader::IfcLoader(uint32_t tapeSize, uint32_t memoryLimit,uint32_t lineWriterBuffer, const schema::IfcSchemaManager &schemaManager) :_lineWriterBuffer(lineWriterBuffer), _schemaManager(schemaManager)
+   IfcLoader::IfcLoader(uint32_t tapeSize, uint64_t memoryLimit,uint32_t lineWriterBuffer, const schema::IfcSchemaManager &schemaManager) :_lineWriterBuffer(lineWriterBuffer), _schemaManager(schemaManager)
    { 
-     _tokenStream = new IfcTokenStream(tapeSize,memoryLimit/tapeSize);
+     uint64_t maxChunks;
+     if (memoryLimit > 0) maxChunks = memoryLimit/tapeSize; 
+     else maxChunks = 0;
+     _tokenStream = new IfcTokenStream(tapeSize,maxChunks);
      _maxExpressId=0;
    }  
    
@@ -73,7 +79,7 @@ namespace webifc::parsing {
      ParseLines();
    }
    
-   void IfcLoader::SaveFile(const std::function<void(char *, size_t)> &outputData) const
+   void IfcLoader::SaveFile(const std::function<void(char *, size_t)> &outputData, bool orderLinesByExpressID) const
    { 
       std::ostringstream output;
       output << "ISO-10303-21;"<<std::endl<<"HEADER;"<<std::endl;
@@ -94,6 +100,10 @@ namespace webifc::parsing {
           currentLines =  new std::vector<IfcLine*>();
           std::transform( _lines.begin(), _lines.end(), std::back_inserter( *currentLines ), [](auto &kv){ return kv.second;}  );
         }
+		if (orderLinesByExpressID) {
+			// Sort based on tapeOffset, which preserves the order by which the lines have been pushed
+			std::sort(currentLines->begin(), currentLines->end(), [](const IfcLine* a, const IfcLine* b) { return a->tapeOffset < b->tapeOffset; });
+		}
         for(uint32_t i=0; i < currentLines->size();i++)
         {
        
@@ -203,13 +213,11 @@ namespace webifc::parsing {
       outputData((char*)tmp.c_str(),tmp.size());
    }
    
-   void IfcLoader::SaveFile(std::ostream &outputData) const
+   void IfcLoader::SaveFile(std::ostream &outputData, bool orderLinesByExpressID) const
    { 
-     SaveFile([&](char* src, size_t srcSize)
-      {
+     SaveFile([&](char* src, size_t srcSize) {
           outputData.write(src,srcSize);
-      }
-    );
+		 },orderLinesByExpressID);
    }
       
    bool IfcLoader::IsAtEnd() const
@@ -359,7 +367,7 @@ namespace webifc::parsing {
    { 
       std::string_view str = GetStringArgument();
       double number_value;
-      fast_float::from_chars(str.data(), str.data() +str.size(), number_value);
+      fast_float::from_chars(str.data(), str.data() + str.size(), number_value);
       return number_value;
    }
 
@@ -642,6 +650,50 @@ namespace webifc::parsing {
    		}
    	}
    }
+
+   uint32_t IfcLoader::GetNoLineArguments(uint32_t expressID) const
+   {
+
+      if (!_lines.contains(expressID)) return 0;
+      _tokenStream->MoveTo(_lines.at(expressID)->tapeOffset);
+      _tokenStream->Read<char>();
+      _tokenStream->Read<uint32_t>();
+      _tokenStream->Read<char>();
+      uint16_t length = _tokenStream->Read<uint16_t>();
+      _tokenStream->Forward(length);
+      _tokenStream->Read<char>();
+      uint32_t noArguments = 0;
+
+       while (true) {
+        IfcTokenType t = static_cast<IfcTokenType>(_tokenStream->Read<char>());
+        if (t == SET_END || t==LINE_END) return noArguments;
+        if (t == UNKNOWN || t==EMPTY) {
+          noArguments++;
+          continue;
+        }
+        if (t==SET_BEGIN) {
+          StepBack();
+          GetSetArgument();
+          noArguments++;
+		      continue;
+
+        }
+        if (t == IfcTokenType::STRING || t == IfcTokenType::INTEGER || t == IfcTokenType::REAL || t == IfcTokenType::LABEL || t == IfcTokenType::ENUM) {
+          uint16_t length = _tokenStream->Read<uint16_t>();
+          _tokenStream->Forward(length);
+          noArguments++;
+          if (t==IfcTokenType::LABEL) GetSetArgument();
+          continue;
+        }
+        if (t == REF) {
+          _tokenStream->Read<uint32_t>();
+          noArguments++;
+          continue;
+        }
+      }
+      return noArguments;
+   }
+
    
    void IfcLoader::MoveToArgumentOffset(const uint32_t expressID, const uint32_t argumentIndex) const
    {
@@ -684,4 +736,21 @@ namespace webifc::parsing {
       return currentId;
     }
 
+    std::string IfcLoader::GetExpandedUUIDArgument() const
+    {
+      return expandIfcGuid(GetStringArgument());
+    }    
+
+    std::string IfcLoader::GenerateUUID() const {
+      return compressIfcGuid(generateStringUUID());
+    }
+
+    IfcLoader * IfcLoader::Clone() {
+      return new IfcLoader(_maxExpressId, _lineWriterBuffer,_schemaManager,  _tokenStream->Clone(), _lines, _headerLines, _ifcTypeToExpressID);
+    }
+
+    IfcLoader::IfcLoader(uint32_t maxExpressId,uint32_t lineWriterBuffer, const schema::IfcSchemaManager &schemaManager, IfcTokenStream * tokenStream, std::unordered_map<uint32_t,IfcLine*> &lines, std::vector<IfcLine*> &headerLines,std::unordered_map<uint32_t, std::vector<uint32_t>> &ifcTypeToExpressID)
+      : _maxExpressId(maxExpressId) , _lineWriterBuffer(lineWriterBuffer), _schemaManager(schemaManager), _tokenStream(tokenStream), _lines(lines) , _headerLines(headerLines), _ifcTypeToExpressID(ifcTypeToExpressID)
+    {}
+    
 }

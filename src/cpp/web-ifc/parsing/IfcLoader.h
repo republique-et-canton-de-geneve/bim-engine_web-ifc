@@ -20,13 +20,13 @@ namespace webifc::parsing
 	class IfcLoader {
   
     public:
-      IfcLoader(uint32_t tapeSize, uint32_t memoryLimit,uint32_t lineWriterBuffer, const schema::IfcSchemaManager &schemaManager);  
+      IfcLoader(uint32_t tapeSize, uint64_t memoryLimit,uint32_t lineWriterBuffer, const schema::IfcSchemaManager &schemaManager);  
       ~IfcLoader();
       const std::vector<uint32_t> GetHeaderLinesWithType(const uint32_t type) const;
       void LoadFile(const std::function<uint32_t(char *, size_t, size_t)> &requestData);
       void LoadFile(std::istream &requestData);
-      void SaveFile(const std::function<void(char *, size_t)> &outputData) const;
-      void SaveFile(std::ostream &outputData) const;
+      void SaveFile(const std::function<void(char *, size_t)> &outputData, bool orderLinesByExpressID) const;
+      void SaveFile(std::ostream &outputData, bool orderLinesByExpressID) const;
       const std::vector<uint32_t> GetExpressIDsWithType(const uint32_t type) const;
       uint32_t GetMaxExpressId() const;
       bool IsValidExpressID(const uint32_t expressID) const;
@@ -36,6 +36,7 @@ namespace webifc::parsing
       void MoveToHeaderLineArgument(const uint32_t lineID, const uint32_t argumentIndex) const;
       std::string_view GetStringArgument() const;
       std::string GetDecodedStringArgument() const;
+      std::string GetExpandedUUIDArgument() const;
       double GetDoubleArgument() const;
       long GetIntArgument() const;
       long GetIntArgument(const uint32_t tapeOffset) const;
@@ -51,6 +52,7 @@ namespace webifc::parsing
       std::vector<uint32_t> GetAllLines() const;
       const std::vector<std::vector<uint32_t>> GetSetListArgument() const;
       void MoveToArgumentOffset(const uint32_t expressID, const uint32_t argumentIndex) const;
+      uint32_t GetNoLineArguments(uint32_t expressID) const;
       void StepBack() const;
       IFC_SCHEMA GetSchema() const;
       void Push(void *v, const uint64_t size);
@@ -61,6 +63,9 @@ namespace webifc::parsing
       void RemoveLine(const uint32_t expressID);
       void PushDouble(double input);
       void PushInt(int input);
+      std::string GenerateUUID() const;
+      IfcLoader* Clone();
+
       uint32_t GetNextExpressID(uint32_t expressId) const;
       template <typename T> void Push(T input)
       {
@@ -73,6 +78,7 @@ namespace webifc::parsing
         uint32_t ifcType;
         uint32_t tapeOffset;
       };
+      IfcLoader(uint32_t maxExpressId, uint32_t lineWriterBuffer, const schema::IfcSchemaManager &schemaManager, IfcTokenStream * tokenStream, std::unordered_map<uint32_t,IfcLine*> &lines, std::vector<IfcLine*> &headerLines,std::unordered_map<uint32_t, std::vector<uint32_t>> &ifcTypeToExpressID);
       uint32_t _maxExpressId;
       const uint32_t _lineWriterBuffer;
       const schema::IfcSchemaManager &_schemaManager;

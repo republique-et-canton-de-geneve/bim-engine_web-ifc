@@ -73,6 +73,31 @@ std::vector<webifc::geometry::IfcAlignment> GetAlignments(webifc::parsing::IfcLo
         DumpAlignment(alignments, "V_ALIGN.obj", "H_ALIGN.obj");
     }
 
+    for (size_t i = 0; i < alignments.size(); i++)
+    {
+        webifc::geometry::IfcAlignment alignment = alignments[i];
+        std::vector<glm::dvec3>  pointsH;
+        std::vector<glm::dvec3>  pointsV;
+        for (size_t j = 0; j < alignment.Horizontal.curves.size(); j++)
+        {
+            for (size_t k = 0; k < alignment.Horizontal.curves[j].points.size(); k++)
+            {
+                pointsH.push_back(alignment.Horizontal.curves[j].points[k]);
+            }
+        }
+        for (size_t j = 0; j < alignment.Vertical.curves.size(); j++)
+        {
+            for (size_t k = 0; k < alignment.Vertical.curves[j].points.size(); k++)
+            {
+                pointsV.push_back(alignment.Vertical.curves[j].points[k]);
+            }
+        }
+        webifc::geometry::IfcCurve curve;
+        curve.points = bimGeometry::Convert2DAlignmentsTo3D(pointsH, pointsV);
+        alignments[i].Absolute.curves.push_back(curve);
+    }
+
+
     return alignments;
 }
 
@@ -141,7 +166,7 @@ std::string ReadValue(webifc::parsing::IfcLoader &loader, webifc::parsing::IfcTo
     }
 }
 
-std::string GetArgs(webifc::parsing::IfcLoader &loader, bool inObject=false, bool inList=false)
+std::string GetArgs(webifc::parsing::IfcLoader &loader, bool inObject = false, bool inList = false)
 {
     std::string arguments;
     size_t size = 0;
@@ -152,58 +177,60 @@ std::string GetArgs(webifc::parsing::IfcLoader &loader, bool inObject=false, boo
 
         switch (t)
         {
-            case webifc::parsing::IfcTokenType::LINE_END:
+        case webifc::parsing::IfcTokenType::LINE_END:
+        {
+            endOfLine = true;
+            break;
+        }
+        case webifc::parsing::IfcTokenType::EMPTY:
+        {
+            arguments += " Empty ";
+            break;
+        }
+        case webifc::parsing::IfcTokenType::SET_BEGIN:
+        {
+            arguments += GetArgs(loader, false, true);
+            break;
+        }
+        case webifc::parsing::IfcTokenType::SET_END:
+        {
+            endOfLine = true;
+            break;
+        }
+        case webifc::parsing::IfcTokenType::LABEL:
+        {
+            // read label
+            std::string obj;
+            obj = " type: LABEL ";
+            loader.StepBack();
+            auto s = loader.GetStringArgument();
+            // read set open
+            loader.GetTokenType();
+            obj += " value " + GetArgs(loader, true) + " ";
+            arguments += obj;
+            break;
+        }
+        case webifc::parsing::IfcTokenType::STRING:
+        case webifc::parsing::IfcTokenType::ENUM:
+        case webifc::parsing::IfcTokenType::REAL:
+        case webifc::parsing::IfcTokenType::INTEGER:
+        case webifc::parsing::IfcTokenType::REF:
+        {
+            loader.StepBack();
+            std::string obj;
+            if (inObject)
+                obj = ReadValue(loader, t);
+            else
             {
-                endOfLine = true;
-                break;
-            }
-            case webifc::parsing::IfcTokenType::EMPTY:
-            {
-                arguments += " Empty ";
-                break;
-            }
-            case webifc::parsing::IfcTokenType::SET_BEGIN:
-            {
-                arguments += GetArgs(loader, false, true);
-                break;
-            }
-            case webifc::parsing::IfcTokenType::SET_END:
-            {
-                endOfLine = true;
-                break;
-            }
-            case webifc::parsing::IfcTokenType::LABEL:
-            {
-                // read label
-                std::string obj; 
-                obj = " type: LABEL ";
-                loader.StepBack();
-                auto s=loader.GetStringArgument();
-                // read set open
-                loader.GetTokenType();
-                obj += " value " + GetArgs(loader,true) + " ";
-                arguments += obj;
-                break;
-            }
-            case webifc::parsing::IfcTokenType::STRING:
-            case webifc::parsing::IfcTokenType::ENUM:
-            case webifc::parsing::IfcTokenType::REAL:
-            case webifc::parsing::IfcTokenType::INTEGER:
-            case webifc::parsing::IfcTokenType::REF:
-            {
-                loader.StepBack();
                 std::string obj;
-                if (inObject) obj = ReadValue(loader,t);
-                else {
-                    std::string obj; 
-                    obj += " type REF ";
-                    obj += ReadValue(loader,t) + " ";
-                }
-                arguments += obj;
-                break;
+                obj += " type REF ";
+                obj += ReadValue(loader, t) + " ";
             }
-            default:
-                break;
+            arguments += obj;
+            break;
+        }
+        default:
+            break;
         }
     }
     return arguments;
@@ -211,9 +238,11 @@ std::string GetArgs(webifc::parsing::IfcLoader &loader, bool inObject=false, boo
 
 std::string GetLine(webifc::parsing::IfcLoader &loader, uint32_t expressID)
 {
-    if (!loader.IsValidExpressID(expressID)) return "";
+    if (!loader.IsValidExpressID(expressID))
+        return "";
     uint32_t lineType = loader.GetLineType(expressID);
-    if (lineType==0) return "";
+    if (lineType == 0)
+        return "";
 
     loader.MoveToArgumentOffset(expressID, 0);
 
@@ -243,7 +272,7 @@ std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(webifc::parsing::IfcLoade
         {
             auto mesh = geometryLoader.GetFlatMesh(elements[i]);
 
-            if(mesh.expressID == IdToExport)
+            if (mesh.expressID == IdToExport)
             {
                 DumpFlatMesh(mesh, geometryLoader, "TEST_GEOM.obj");
             }
@@ -258,6 +287,30 @@ std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(webifc::parsing::IfcLoade
     }
 
     return meshes;
+}
+
+std::vector<webifc::geometry::SweptDiskSolid> GetAllRebars(webifc::parsing::IfcLoader &loader, webifc::geometry::IfcGeometryProcessor &geometryLoader)
+{
+    std::vector<webifc::geometry::SweptDiskSolid> reinforcingBars;
+    std::vector<glm::dmat4> reinforcingBarsTransform;
+
+    auto type = webifc::schema::IFCREINFORCINGBAR;
+
+    auto elements = loader.GetExpressIDsWithType(type);
+
+    for (size_t i = 0; i < elements.size(); i++)
+    {    
+        auto mesh = geometryLoader.GetFlatMesh(elements[i]);
+
+        for (auto &geom : mesh.geometries)
+        {
+            auto flatGeom = geometryLoader.GetGeometry(geom.geometryExpressID);
+            reinforcingBars.push_back(flatGeom.sweptDiskSolid);
+            reinforcingBarsTransform.push_back(geom.transformation);
+        }
+    }
+
+    return reinforcingBars;
 }
 
 void DumpRefs(std::unordered_map<uint32_t, std::vector<uint32_t>> &refs)
@@ -405,16 +458,25 @@ int main()
 
     // return 0;
 
-    std::string content = ReadFile("C:/Users/qmoya/Desktop/MODELS/993.ifc");
-
+    // std::string content = ReadFile("C:/Users/qmoya/Desktop/MODELS/VEC-IFC-INST-totaal-20130726.ifc");
+    // std::string content = ReadFile("C:/Users/qmoya/Desktop/MODELS/15.ifc");
+    // std::string content = ReadFile("C:/Users/qmoya/Desktop/MODELS/F_MA_160_ALT3.ifc");
+    std::string content = ReadFile("C:/Users/qmoya/Desktop/MODELS/1256.ifc");
+    // std::string content = ReadFile("C:/Users/qmoya/Desktop/MODELS/Sample3_ArchiCAD25.ifc");
+    // std::string content = ReadFile("C:/Users/qmoya/Desktop/MODELS/384.ifc");
+    // std::string content = ReadFile("C:/Users/qmoya/Desktop/MODELS/Spacewell_Wall.ifc");
 
     struct LoaderSettings
     {
         bool COORDINATE_TO_ORIGIN = false;
         uint16_t CIRCLE_SEGMENTS = 12;
-        uint32_t TAPE_SIZE = 67108864 ; // probably no need for anyone other than web-ifc devs to change this
+        uint32_t TAPE_SIZE = 67108864; // probably no need for anyone other than web-ifc devs to change this
         uint32_t MEMORY_LIMIT = 2147483648;
         uint16_t LINEWRITER_BUFFER = 10000;
+        double tolerancePlaneIntersection = 1.0E-04;
+        double toleranceBoundaryPoint = 1.0E-04;
+        double toleranceInsideOutsideToPlane = 1.0E-04;
+        double toleranceInsideOutside = 1.0E-10;
     };
 
     LoaderSettings set;
@@ -441,14 +503,15 @@ int main()
     // outputFile << loader.DumpSingleObjectAsIFC(14363);
     // outputFile.close();
 
-    webifc::geometry::IfcGeometryProcessor geometryLoader(loader, schemaManager, set.CIRCLE_SEGMENTS, set.COORDINATE_TO_ORIGIN);
+    webifc::geometry::IfcGeometryProcessor geometryLoader(loader, schemaManager, set.CIRCLE_SEGMENTS, set.COORDINATE_TO_ORIGIN, set.tolerancePlaneIntersection, set.toleranceBoundaryPoint, set.toleranceInsideOutsideToPlane, set.toleranceInsideOutside);
 
     start = ms();
-    
-    SpecificLoadTest(loader, geometryLoader, 3649);
 
-    auto meshes = LoadAllTest(loader, geometryLoader, 3649);
-    std::cout << GetLine(loader, 225) << std::endl;
+    SpecificLoadTest(loader, geometryLoader, 107287);
+    // SpecificLoadTest(loader, geometryLoader, 36487);
+    // auto meshes = LoadAllTest(loader, geometryLoader, -1);
+    // auto rebars = GetAllRebars(loader, geometryLoader);
+    // std::cout << GetLine(loader, 225) << std::endl;
     // auto alignments = GetAlignments(loader, geometryLoader);
 
     time = ms() - start;

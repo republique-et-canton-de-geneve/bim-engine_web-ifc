@@ -9,20 +9,17 @@
 #include <vector>
 #include <string>
 #include <glm/glm.hpp>
+#include "../operations/bim-geometry/curve.h"
 
 namespace webifc::geometry {
 
-	struct IfcCurve
+	struct IfcCurve : bimGeometry::Curve
 	{
-		std::vector<glm::dvec3> points;
-		std::vector<uint16_t> indices;
+		std::vector<uint32_t> arcSegments;
 		std::vector<std::string> userData;
-		void Add(glm::dvec3 pt);
-		void Add(glm::dvec2 pt);
+		std::vector<uint16_t> indices;
 		glm::dvec2 Get2d(size_t i) const;
 		glm::dvec3 Get3d(size_t i) const;
-		void Invert();
-		bool IsCCW() const;
 		glm::dmat4 getPlacementAtDistance(double length);
 		
 		private:

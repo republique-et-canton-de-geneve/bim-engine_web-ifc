@@ -1,5 +1,10 @@
 #pragma once
 
+inline double _tolerancePlaneIntersection = 1.0E-04;
+inline double _toleranceBoundaryPoint = 1.0E-04;
+inline double _toleranceInsideOutsideToPlane = 1.0E-04;
+inline double _toleranceInsideOutside = 1.0E-10;
+
 constexpr bool messages = false;
 
 /*
@@ -43,13 +48,10 @@ constexpr double toleranceAABB     = 1.0E-03;
 */    
 constexpr double toleranceParallel      = 1.0E-04;
 constexpr double toleranceParallelTight = 1.0E-10;
-constexpr double toleranceInsideOutside = 1.0E-10; // This eps works for some models at 10-4 but others require 10-10
-constexpr double toleranceInsideOutsideToPlane = 1.0E-04; // This eps works for some models at 10-4 but others require 10-10
 constexpr double toleranceThinTriangle = 1.0e-10;
 /*
     Constants used in function isInsideMesh
 */    
-constexpr double toleranceBoundaryPoint = 1.0E-04;
 
 /*
     Constants used in function AddFace in geometry.h

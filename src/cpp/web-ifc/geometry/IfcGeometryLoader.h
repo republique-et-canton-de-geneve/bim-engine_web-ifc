@@ -25,7 +25,7 @@ namespace webifc::geometry
   class IfcGeometryLoader 
   {
   public:
-    IfcGeometryLoader(const webifc::parsing::IfcLoader &loader,const webifc::schema::IfcSchemaManager &schemaManager,uint16_t circleSegments);
+    IfcGeometryLoader(const webifc::parsing::IfcLoader &loader,const webifc::schema::IfcSchemaManager &schemaManager,uint16_t circleSegments, double tolerancePlaneIntersection, double toleranceBoundaryPoint, double toleranceInsideOutsideToPlane, double toleranceInsideOutside);
     void ResetCache();
     std::array<glm::dvec3,2> GetAxis1Placement(const uint32_t expressID) const;
     glm::dmat3 GetAxis2Placement2D(const uint32_t expressID) const;
@@ -50,17 +50,15 @@ namespace webifc::geometry
     IfcAlignment GetAlignment(uint32_t expressID, IfcAlignment alignment = IfcAlignment(), glm::dmat4 transform = glm::dmat4(1), uint32_t sourceExpressID = -1) const;
     bool GetColor(const uint32_t expressID, const glm::dvec4 &outputColor) const; 
     const std::unordered_map<uint32_t, std::vector<uint32_t>> &GetRelVoids() const;
-    const std::unordered_map<uint32_t, std::vector<uint32_t>> &GetRelVoidRels() const;
-    const std::unordered_map<uint32_t, std::vector<uint32_t>> &GetRelNests() const;
-    const std::unordered_map<uint32_t, std::vector<uint32_t>> &GetRelAggregates() const;
-    const std::unordered_map<uint32_t, std::vector<uint32_t>> &GetRelElementAggregates() const;
     const std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> &GetStyledItems() const;
     const std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> &GetRelMaterials() const;
     const std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> &GetMaterialDefinitions() const;
     double GetLinearScalingFactor() const;
     std::string GetAngleUnits() const;
     void Clear() const;
+    IfcGeometryLoader* Clone(const webifc::parsing::IfcLoader &loader) const;
   private:
+    IfcGeometryLoader(const webifc::parsing::IfcLoader &loader, const webifc::schema::IfcSchemaManager &schemaManager, const std::unordered_map<uint32_t, std::vector<uint32_t>> &relVoids, const std::unordered_map<uint32_t, std::vector<uint32_t>> &relNests, const std::unordered_map<uint32_t, std::vector<uint32_t>> &relAggregates, const std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> &styledItems, const std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> &relMaterials, const std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> &materialDefinitions, double linearScalingFactor, double squaredScalingFactor, double cubicScalingFactor, double angularScalingFactor, std::string angleUnits, uint16_t circleSegments, std::vector<IfcCurve> &localCurvesList, std::vector<uint32_t> &localcurvesIndices, std::unordered_map<uint32_t, glm::dmat4> expressIDToPlacement);
     IfcCurve GetAlignmentCurve(uint32_t expressID, uint32_t parentExpressID = -1) const;
     IfcProfile GetProfileByLine(uint32_t expressID) const;
     glm::dvec3 GetVertexPoint(uint32_t expressID) const;
@@ -71,11 +69,9 @@ namespace webifc::geometry
     std::vector<IfcSegmentIndexSelect> ReadCurveIndices() const;
     const webifc::parsing::IfcLoader &_loader;
     const webifc::schema::IfcSchemaManager &_schemaManager;
-    std::unordered_map<uint32_t, std::vector<uint32_t>> _relVoidRel;
     std::unordered_map<uint32_t, std::vector<uint32_t>> _relVoids; 
     std::unordered_map<uint32_t, std::vector<uint32_t>> _relNests;
     std::unordered_map<uint32_t, std::vector<uint32_t>> _relAggregates;
-    std::unordered_map<uint32_t, std::vector<uint32_t>> _relElementAggregates;
     std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> _styledItems;
     std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> _relMaterials;
     std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> _materialDefinitions;
@@ -85,13 +81,11 @@ namespace webifc::geometry
     double _angularScalingFactor = 1;
     std::string _angleUnits;
     uint16_t _circleSegments;
-    mutable std::vector<IfcCurve> LocalCurvesList;
-    mutable std::vector<uint32_t> LocalcurvesIndices;
+    mutable std::vector<IfcCurve> _localCurvesList;
+    mutable std::vector<uint32_t> _localcurvesIndices;
     std::unordered_map<uint32_t, std::vector<uint32_t>> PopulateRelVoidsMap();
-    std::unordered_map<uint32_t, std::vector<uint32_t>> PopulateRelVoidsRelMap();
     std::unordered_map<uint32_t, std::vector<uint32_t>> PopulateRelNestsMap();
     std::unordered_map<uint32_t, std::vector<uint32_t>> PopulateRelAggregatesMap();
-    std::unordered_map<uint32_t, std::vector<uint32_t>> PopulateRelElementAggregatesMap();
     std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> PopulateStyledItemMap();
     std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> PopulateRelMaterialsMap();
     std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> PopulateMaterialDefinitionsMap();

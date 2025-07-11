@@ -12,6 +12,18 @@
 #include <spdlog/spdlog.h>
 #include "../web-ifc/modelmanager/ModelManager.h"
 #include "../version.h"
+#include "../web-ifc/geometry/operations/bim-geometry/extrusion.h"
+#include "../web-ifc/geometry/operations/bim-geometry/sweep.h"
+#include "../web-ifc/geometry/operations/bim-geometry/circularSweep.h"
+#include "../web-ifc/geometry/operations/bim-geometry/revolution.h"
+#include "../web-ifc/geometry/operations/bim-geometry/cylindricalRevolution.h"
+#include "../web-ifc/geometry/operations/bim-geometry/parabola.h"
+#include "../web-ifc/geometry/operations/bim-geometry/clothoid.h"
+#include "../web-ifc/geometry/operations/bim-geometry/arc.h"
+#include "../web-ifc/geometry/operations/bim-geometry/alignment.h"
+#include "../web-ifc/geometry/operations/bim-geometry/utils.h"
+#include "../web-ifc/geometry/operations/bim-geometry/boolean.h"
+#include "../web-ifc/geometry/operations/bim-geometry/profile.h"
 #include "../web-ifc/geometry/ifcMeshesStreamingSession.h"
 #include "optional";
 
@@ -56,10 +68,12 @@ int OpenModel(webifc::manager::LoaderSettings settings, emscripten::val callback
 
 void SaveModel(uint32_t modelID, emscripten::val callback)
 {
-    if (!manager.IsModelOpen(modelID))
-        return;
-    manager.GetIfcLoader(modelID)->SaveFile([&](char *src, size_t srcSize)
-                                            { emscripten::val retVal = callback((uint32_t)src, srcSize); });
+    if (!manager.IsModelOpen(modelID)) return;
+    manager.GetIfcLoader(modelID)->SaveFile([&](char* src, size_t srcSize)
+        {
+            emscripten::val retVal = callback((uint32_t)src, srcSize);
+        }, false
+    );
 }
 
 int GetModelSize(uint32_t modelID)
@@ -290,6 +304,30 @@ std::vector<webifc::geometry::IfcAlignment> GetAllAlignments(uint32_t modelID)
         alignments.push_back(alignment);
     }
 
+    for (size_t i = 0; i < alignments.size(); i++)
+    {
+        webifc::geometry::IfcAlignment alignment = alignments[i];
+        std::vector<glm::dvec3>  pointsH;
+        std::vector<glm::dvec3>  pointsV;
+        for (size_t j = 0; j < alignment.Horizontal.curves.size(); j++)
+        {
+            for (size_t k = 0; k < alignment.Horizontal.curves[j].points.size(); k++)
+            {
+                pointsH.push_back(alignment.Horizontal.curves[j].points[k]);
+            }
+        }
+        for (size_t j = 0; j < alignment.Vertical.curves.size(); j++)
+        {
+            for (size_t k = 0; k < alignment.Vertical.curves[j].points.size(); k++)
+            {
+                pointsV.push_back(alignment.Vertical.curves[j].points[k]);
+            }
+        }
+        webifc::geometry::IfcCurve curve;
+        curve.points = bimGeometry::Convert2DAlignmentsTo3D(pointsH, pointsV);
+        alignments[i].Absolute.curves.push_back(curve);
+    }
+
     return alignments;
 }
 
@@ -393,16 +431,12 @@ bool WriteValue(uint32_t modelID, webifc::parsing::IfcTokenType t, emscripten::v
     case webifc::parsing::IfcTokenType::ENUM:
     {
         std::string copy;
-        if (value.isTrue())
-            copy = "T";
-        else if (value.isFalse())
-            copy = "F";
-        else
-            copy = value.as<std::string>();
-        if (copy == "true")
-            copy = "T";
-        else if (copy == "false")
-            copy = "F";
+        if (value.isTrue()) copy="T";
+        else if (value.isFalse()) copy="F";
+        else if (value.isUndefined() || value.isNull()) copy="U";
+        else copy = value.as<std::string>();
+        if (copy == "true") copy="T";
+        else if (copy == "false") copy="F";
         uint16_t length = copy.size();
         loader->Push<uint16_t>((uint16_t)length);
         loader->Push((void *)copy.c_str(), copy.size());
@@ -451,7 +485,6 @@ bool WriteSet(uint32_t modelID, emscripten::val &val)
         else if (child.isArray()) WriteSet(modelID,child);
         else if (child["value"].isArray())
         {
-
             emscripten::val innerVal = child["value"];
             webifc::parsing::IfcTokenType type = static_cast<webifc::parsing::IfcTokenType>(child["type"].as<uint32_t>());
             loader->Push(webifc::parsing::IfcTokenType::SET_BEGIN);
@@ -478,24 +511,24 @@ bool WriteSet(uint32_t modelID, emscripten::val &val)
             loader->Push(type);
             switch (type)
             {
-            case webifc::parsing::IfcTokenType::LINE_END:
-            case webifc::parsing::IfcTokenType::EMPTY:
-            case webifc::parsing::IfcTokenType::SET_BEGIN:
-            case webifc::parsing::IfcTokenType::SET_END:
-            {
-                // ignore, we should not be seeing this
-                break;
-            }
-            case webifc::parsing::IfcTokenType::UNKNOWN:
-            {
-                // ignore, already pushed above, no further data
-                break;
-            }
-            case webifc::parsing::IfcTokenType::LABEL:
-            {
-                auto label = child["label"];
-                auto valueType = static_cast<webifc::parsing::IfcTokenType>(child["valueType"].as<uint32_t>());
-                auto value = child["value"];
+                case webifc::parsing::IfcTokenType::LINE_END:
+                case webifc::parsing::IfcTokenType::EMPTY:
+                case webifc::parsing::IfcTokenType::SET_BEGIN:
+                case webifc::parsing::IfcTokenType::SET_END:
+                {
+                    // ignore, we should not be seeing this
+                    break;
+                }
+                case webifc::parsing::IfcTokenType::UNKNOWN:
+                {
+                    // ignore, already pushed above, no further data
+                    break;
+                }
+                case webifc::parsing::IfcTokenType::LABEL:
+                {
+                    auto label = child["label"];
+                    auto valueType = static_cast<webifc::parsing::IfcTokenType>(child["valueType"].as<uint32_t>());
+                    auto value = child[valueType == 4 ? "internalValue" : "value"];
 
                 std::string copy = label.as<std::string>();
 
@@ -510,19 +543,23 @@ bool WriteSet(uint32_t modelID, emscripten::val &val)
 
                 loader->Push<uint8_t>(webifc::parsing::IfcTokenType::SET_END);
 
-                break;
-            }
-            case webifc::parsing::IfcTokenType::STRING:
-            case webifc::parsing::IfcTokenType::ENUM:
-            case webifc::parsing::IfcTokenType::REF:
-            case webifc::parsing::IfcTokenType::REAL:
-            case webifc::parsing::IfcTokenType::INTEGER:
-            {
-                WriteValue(modelID, type, child["value"]);
-                break;
-            }
-            default:
-                break;
+                    break;
+                }
+                case webifc::parsing::IfcTokenType::REAL:
+                {
+                    WriteValue(modelID,type, child["internalValue"]);
+                    break;
+                }
+                case webifc::parsing::IfcTokenType::STRING:
+                case webifc::parsing::IfcTokenType::ENUM:
+                case webifc::parsing::IfcTokenType::REF:
+                case webifc::parsing::IfcTokenType::INTEGER:
+                {
+                    WriteValue(modelID,type, child["value"]);
+                    break;
+                }
+                default:
+                    break;
             }
         }
         else if (child.isNumber() || child.isTrue() || child.isFalse() || child.isString())
@@ -623,6 +660,15 @@ emscripten::val ReadValue(uint32_t modelID, webifc::parsing::IfcTokenType t)
     case webifc::parsing::IfcTokenType::ENUM:
     {
         std::string_view s = loader->GetStringArgument();
+        if(s=="T"){
+            return emscripten::val(true);
+        }
+        if(s=="F"){
+            return emscripten::val(false);
+        }
+        if(s=="U"){
+            return emscripten::val::undefined();
+        }
         return emscripten::val(std::string(s));
     }
     case webifc::parsing::IfcTokenType::REAL:
@@ -658,62 +704,60 @@ emscripten::val GetArgs(uint32_t modelID, bool inObject = false, bool inList = f
 
         switch (t)
         {
-        case webifc::parsing::IfcTokenType::LINE_END:
-        {
-            endOfLine = true;
-            break;
-        }
-        case webifc::parsing::IfcTokenType::EMPTY:
-        {
-            arguments.set(size++, emscripten::val::null());
-            break;
-        }
-        case webifc::parsing::IfcTokenType::SET_BEGIN:
-        {
-            arguments.set(size++, GetArgs(modelID, false, true));
-            break;
-        }
-        case webifc::parsing::IfcTokenType::SET_END:
-        {
-            endOfLine = true;
-            break;
-        }
-        case webifc::parsing::IfcTokenType::LABEL:
-        {
-            // read label
-            auto obj = emscripten::val::object();
-            obj.set("type", emscripten::val(static_cast<uint32_t>(webifc::parsing::IfcTokenType::LABEL)));
-            loader->StepBack();
-            auto s = loader->GetStringArgument();
-            auto typeCode = manager.GetSchemaManager().IfcTypeToTypeCode(s);
-            obj.set("typecode", emscripten::val(typeCode));
-            // read set open
-            loader->GetTokenType();
-            obj.set("value", GetArgs(modelID, true));
-            arguments.set(size++, obj);
-            break;
-        }
-        case webifc::parsing::IfcTokenType::STRING:
-        case webifc::parsing::IfcTokenType::ENUM:
-        case webifc::parsing::IfcTokenType::REAL:
-        case webifc::parsing::IfcTokenType::INTEGER:
-        case webifc::parsing::IfcTokenType::REF:
-        {
-            loader->StepBack();
-            emscripten::val obj;
-            if (inObject)
-                obj = ReadValue(modelID, t);
-            else
+            case webifc::parsing::IfcTokenType::LINE_END:
             {
-                obj = emscripten::val::object();
-                obj.set("type", emscripten::val(static_cast<uint32_t>(t)));
-                obj.set("value", ReadValue(modelID, t));
+                endOfLine = true;
+                break;
             }
-            arguments.set(size++, obj);
-            break;
-        }
-        default:
-            break;
+            case webifc::parsing::IfcTokenType::EMPTY:
+            {
+                arguments.set(size++,emscripten::val::null());
+                break;
+            }
+            case webifc::parsing::IfcTokenType::SET_BEGIN:
+            {
+                arguments.set(size++,GetArgs(modelID, false, true));
+                break;
+            }
+            case webifc::parsing::IfcTokenType::SET_END:
+            {
+                endOfLine = true;
+                break;
+            }
+            case webifc::parsing::IfcTokenType::LABEL:
+            {
+                // read label
+                auto obj = emscripten::val::object();
+                obj.set("type", emscripten::val(static_cast<uint32_t>(webifc::parsing::IfcTokenType::LABEL)));
+                loader->StepBack();
+                auto s=loader->GetStringArgument();
+                auto typeCode = manager.GetSchemaManager().IfcTypeToTypeCode(s);
+                obj.set("typecode", emscripten::val(typeCode));
+                // read set open
+                loader->GetTokenType();
+                obj.set("value", GetArgs(modelID,true));
+                arguments.set(size++, obj);
+                break;
+            }
+            case webifc::parsing::IfcTokenType::STRING:
+            case webifc::parsing::IfcTokenType::ENUM:
+            case webifc::parsing::IfcTokenType::REAL:
+            case webifc::parsing::IfcTokenType::INTEGER:
+            case webifc::parsing::IfcTokenType::REF:
+            {
+                loader->StepBack();
+                emscripten::val obj;
+                if (inObject) obj = ReadValue(modelID,t);
+                else {
+                    obj = emscripten::val::object();
+                    obj.set("type", emscripten::val(static_cast<uint32_t>(t)));
+                    obj.set("value", ReadValue(modelID,t));
+                }
+                arguments.set(size++, obj);
+                break;
+            }
+            default:
+                break;
         }
     }
     if (size == 0 && !inList)
@@ -744,13 +788,12 @@ emscripten::val GetHeaderLine(uint32_t modelID, uint32_t headerType)
     return retVal;
 }
 
+
 emscripten::val GetLine(uint32_t modelID, uint32_t expressID)
 {
-    if (!manager.IsModelOpen(modelID))
-        return emscripten::val::undefined();
     auto loader = manager.GetIfcLoader(modelID);
-    if (!loader->IsValidExpressID(expressID))
-        return emscripten::val::object();
+    if (!manager.IsModelOpen(modelID)) return emscripten::val::object();
+    if (!loader->IsValidExpressID(expressID)) return emscripten::val::object();
     uint32_t lineType = loader->GetLineType(expressID);
     if (lineType == 0)
         return emscripten::val::object();
@@ -764,6 +807,17 @@ emscripten::val GetLine(uint32_t modelID, uint32_t expressID)
     retVal.set(emscripten::val("type"), lineType);
     retVal.set(emscripten::val("arguments"), arguments);
     return retVal;
+
+}
+
+emscripten::val GetLines(uint32_t modelID, emscripten::val expressIDs)
+{
+    auto result = emscripten::val::array();
+    uint32_t size = expressIDs["length"].as<uint32_t>();
+
+    for (size_t x=0; x < size;x++) result.set(x,GetLine(modelID,expressIDs[x].as<uint32_t>()));
+
+    return result;
 }
 
 uint32_t GetLineType(uint32_t modelID, uint32_t expressID)
@@ -776,8 +830,13 @@ std::string GetVersion()
     return std::string(WEB_IFC_VERSION_NUMBER);
 }
 
-uint32_t GetMaxExpressID(uint32_t modelID)
-{
+std::string GenerateGuid(uint32_t modelID) {
+    if (!manager.IsModelOpen(modelID)) return "";
+    auto loader = manager.GetIfcLoader(modelID);
+    return loader->GenerateUUID();
+}
+
+uint32_t GetMaxExpressID(uint32_t modelID) {
     return manager.IsModelOpen(modelID) ? manager.GetIfcLoader(modelID)->GetMaxExpressId() : 0;
 }
 
@@ -809,6 +868,67 @@ void ResetCache(uint32_t modelID) {
     if (manager.IsModelOpen(modelID)) manager.GetGeometryProcessor(modelID)->GetLoader().ResetCache();
 }
 
+bimGeometry::AABB CreateAABB()
+{
+    return bimGeometry::AABB();
+}
+
+bimGeometry::Extrusion CreateExtrusion()
+{
+    return bimGeometry::Extrusion();
+}
+
+bimGeometry::Sweep CreateSweep()
+{
+    return bimGeometry::Sweep();
+}
+
+bimGeometry::CircularSweep CreateCircularSweep()
+{
+    return bimGeometry::CircularSweep();
+}
+
+
+bimGeometry::Revolve CreateRevolution()
+{
+    return bimGeometry::Revolve();
+}
+
+bimGeometry::CylindricalRevolution CreateCylindricalRevolution()
+{
+    return bimGeometry::CylindricalRevolution();
+}
+
+bimGeometry::Parabola CreateParabola()
+{
+    return bimGeometry::Parabola();
+}
+
+bimGeometry::Clothoid CreateClothoid()
+{
+    return bimGeometry::Clothoid();
+}
+
+bimGeometry::Arc CreateArc()
+{
+    return bimGeometry::Arc();
+}
+
+bimGeometry::Alignment CreateAlignment()
+{
+    return bimGeometry::Alignment();
+}
+
+bimGeometry::Boolean CreateBoolean()
+{
+    return bimGeometry::Boolean();
+}
+
+bimGeometry::Profile CreateProfile()
+{
+    return bimGeometry::Profile();
+}
+
 EMSCRIPTEN_BINDINGS(my_module) {
 
     emscripten::class_<webifc::geometry::IfcGeometry>("IfcGeometry")
@@ -816,7 +936,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
         .function("GetVertexData", &webifc::geometry::IfcGeometry::GetVertexData)
         .function("GetVertexDataSize", &webifc::geometry::IfcGeometry::GetVertexDataSize)
         .function("GetIndexData", &webifc::geometry::IfcGeometry::GetIndexData)
-        .function("GetIndexDataSize", &webifc::geometry::IfcGeometry::GetIndexDataSize);
+        .function("GetIndexDataSize", &webifc::geometry::IfcGeometry::GetIndexDataSize)
+        .function("GetSweptDiskSolid", &webifc::geometry::IfcGeometry::GetSweptDiskSolid)
+        ;
 
     emscripten::value_object<glm::dvec4>("dvec4")
         .field("x", &glm::dvec4::x)
@@ -829,7 +951,12 @@ EMSCRIPTEN_BINDINGS(my_module) {
         .field("CIRCLE_SEGMENTS", &webifc::manager::LoaderSettings::CIRCLE_SEGMENTS)
         .field("TAPE_SIZE", &webifc::manager::LoaderSettings::TAPE_SIZE)
         .field("MEMORY_LIMIT", &webifc::manager::LoaderSettings::MEMORY_LIMIT)
-        .field("LINEWRITER_BUFFER", &webifc::manager::LoaderSettings::LINEWRITER_BUFFER);
+        .field("LINEWRITER_BUFFER",&webifc::manager::LoaderSettings::LINEWRITER_BUFFER)
+        .field("tolerancePlaneIntersection", &webifc::manager::LoaderSettings::tolerancePlaneIntersection)
+        .field("toleranceBoundaryPoint", &webifc::manager::LoaderSettings::toleranceBoundaryPoint)
+                .field("toleranceInsideOutsideToPlane",&webifc::manager::LoaderSettings::toleranceInsideOutsideToPlane)
+        .field("toleranceInsideOutside", &webifc::manager::LoaderSettings::toleranceInsideOutside)
+    ;
 
     emscripten::value_array<std::array<double, 16>>("array_double_16")
         .element(emscripten::index<0>())
@@ -868,6 +995,11 @@ EMSCRIPTEN_BINDINGS(my_module) {
     emscripten::register_vector<webifc::geometry::IfcFlatMesh>("IfcFlatMeshVector");
     emscripten::register_vector<uint32_t>("UintVector");
 
+    emscripten::value_object<webifc::geometry::SweptDiskSolid>("SweptDiskSolid")
+        .field("profiles", &webifc::geometry::SweptDiskSolid::profiles)
+        .field("axis", &webifc::geometry::SweptDiskSolid::axis)
+        .field("profileRadius", &webifc::geometry::SweptDiskSolid::profileRadius);
+
     emscripten::register_vector<webifc::geometry::IfcCrossSections>("IfcCrossSectionsVector");
 
     emscripten::value_object<webifc::geometry::IfcCrossSections>("IfcCrossSections")
@@ -878,7 +1010,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
     emscripten::value_object<webifc::geometry::IfcAlignment>("IfcAlignment")
         .field("Horizontal", &webifc::geometry::IfcAlignment::Horizontal)
-        .field("Vertical", &webifc::geometry::IfcAlignment::Vertical);
+        .field("Vertical", &webifc::geometry::IfcAlignment::Vertical)
+        .field("Absolute", &webifc::geometry::IfcAlignment::Absolute);
 
     emscripten::value_object<glm::dvec3>("glmDvec3")
         .field("x", &glm::dvec3::x)
@@ -890,9 +1023,19 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
     emscripten::register_vector<webifc::geometry::IfcCurve>("IfcCurveVector");
 
+    emscripten::register_vector<webifc::geometry::IfcProfile>("IfcProfileVector");
+
     emscripten::value_object<webifc::geometry::IfcCurve>("IfcCurve")
         .field("points", &webifc::geometry::IfcCurve::points)
-        .field("userData", &webifc::geometry::IfcCurve::userData);
+        .field("userData", &webifc::geometry::IfcCurve::userData)
+        .field("arcSegments", &webifc::geometry::IfcCurve::arcSegments);
+
+    emscripten::value_object<webifc::geometry::IfcProfile>("IfcProfile")
+        .field("curve", &webifc::geometry::IfcProfile::curve)
+        .field("holes", &webifc::geometry::IfcProfile::holes)
+        .field("profiles", &webifc::geometry::IfcProfile::profiles)
+        .field("isConvex", &webifc::geometry::IfcProfile::isConvex)
+        .field("isComposite", &webifc::geometry::IfcProfile::isComposite);
 
     emscripten::register_vector<glm::vec<2, glm::f64>>("vector2doubleVector");
 
@@ -904,6 +1047,103 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
     emscripten::register_vector<double>("DoubleVector");
 
+    //bimGeometry
+
+    emscripten::value_object<bimGeometry::Buffers>("Buffers")
+        .field("fvertexData", &bimGeometry::Buffers::fvertexData)
+        .field("indexData", &bimGeometry::Buffers::indexData)
+        ;
+
+    emscripten::register_vector<float>("vector<float>");
+
+    emscripten::class_<bimGeometry::AABB>("AABB")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::AABB::GetBuffers)
+        .function("SetValues", &bimGeometry::AABB::SetValues)
+        ;
+
+    emscripten::class_<bimGeometry::Extrusion>("Extrusion")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::Extrusion::GetBuffers)
+        .function("SetValues", &bimGeometry::Extrusion::SetValues)
+        .function("SetHoles", &bimGeometry::Extrusion::SetHoles)
+        .function("ClearHoles", &bimGeometry::Extrusion::ClearHoles)
+        ;
+
+    emscripten::class_<bimGeometry::Sweep>("Sweep")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::Sweep::GetBuffers)
+        .function("SetValues", &bimGeometry::Sweep::SetValues)
+        ;
+
+    emscripten::class_<bimGeometry::CircularSweep>("CircularSweep")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::CircularSweep::GetBuffers)
+        .function("SetValues", &bimGeometry::CircularSweep::SetValues)
+        ;
+
+    emscripten::class_<bimGeometry::Revolve>("Revolution")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::Revolve::GetBuffers)
+        .function("SetValues", &bimGeometry::Revolve::SetValues)
+        ;
+
+    emscripten::class_<bimGeometry::CylindricalRevolution>("CylindricalRevolution")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::CylindricalRevolution::GetBuffers)
+        .function("SetValues", &bimGeometry::CylindricalRevolution::SetValues)
+        ;
+
+    emscripten::class_<bimGeometry::Parabola>("Parabola")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::Parabola::GetBuffers)
+        .function("SetValues", &bimGeometry::Parabola::SetValues)
+        ;
+
+    emscripten::class_<bimGeometry::Clothoid>("Clothoid")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::Clothoid::GetBuffers)
+        .function("SetValues", &bimGeometry::Clothoid::SetValues)
+        ;
+
+    emscripten::class_<bimGeometry::Arc>("Arc")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::Arc::GetBuffers)
+        .function("SetValues", &bimGeometry::Arc::SetValues)
+        ;
+
+    emscripten::class_<bimGeometry::Alignment>("Alignment")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::Alignment::GetBuffers)
+        .function("SetValues", &bimGeometry::Alignment::SetValues)
+        ;
+
+    emscripten::class_<bimGeometry::Boolean>("BooleanOperator")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::Boolean::GetBuffers)
+        .function("SetValues", &bimGeometry::Boolean::SetValues)
+        .function("SetSecond", &bimGeometry::Boolean::SetSecond)
+        .function("clear", &bimGeometry::Boolean::clear)
+        ;
+
+    emscripten::class_<bimGeometry::Profile>("Profile")
+        .constructor<>()
+        .function("GetBuffers", &bimGeometry::Profile::GetBuffers)
+        .function("SetValues", &bimGeometry::Profile::SetValues)
+        ;
+
+    emscripten::function("CreateAABB", &CreateAABB);
+    emscripten::function("CreateExtrusion", &CreateExtrusion);
+    emscripten::function("CreateSweep", &CreateSweep);
+    emscripten::function("CreateCircularSweep", &CreateCircularSweep);
+    emscripten::function("CreateRevolution", &CreateRevolution);
+    emscripten::function("CreateCylindricalRevolution", &CreateCylindricalRevolution);
+    emscripten::function("CreateParabola", &CreateParabola);
+    emscripten::function("CreateClothoid", &CreateClothoid);
+    emscripten::function("CreateArc", &CreateArc);
+    emscripten::function("CreateAlignment", &CreateAlignment);
+    emscripten::function("CreateBooleanOperator", &CreateBoolean);
+    emscripten::function("CreateProfile", &CreateProfile);
     emscripten::function("LoadAllGeometry", &LoadAllGeometry);
     emscripten::function("GetAllCrossSections", &GetAllCrossSections);
     emscripten::function("GetAllAlignments", &GetAllAlignments);
@@ -922,6 +1162,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
     emscripten::function("CreateAllMeshesStreamingSession", &CreateAllMeshesStreamingSession);
     emscripten::function("AllMeshesStreamingSessionNext", &AllMeshesStreamingSessionNext);
     emscripten::function("GetLine", &GetLine);
+    emscripten::function("GetLines", &GetLines);
     emscripten::function("GetLineType", &GetLineType);
     emscripten::function("GetHeaderLine", &GetHeaderLine);
     emscripten::function("WriteLine", &WriteLine);
@@ -942,4 +1183,5 @@ EMSCRIPTEN_BINDINGS(my_module) {
     emscripten::function("CloseAllModels", &CloseAllModels);
     emscripten::function("DecodeText", &DecodeText);
     emscripten::function("EncodeText", &EncodeText);
+    emscripten::function("GenerateGuid", &GenerateGuid);
 }

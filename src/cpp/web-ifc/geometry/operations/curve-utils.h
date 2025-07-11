@@ -296,13 +296,12 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 
 
 
-	inline	std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(int degree, std::vector<glm::dvec3> points, std::vector<double> knots, std::vector<double> weights)
+	inline	std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(int degree, std::vector<glm::dvec3> points, std::vector<double> knots, std::vector<double> weights, double numCurvePoints)
 	{
-
 		spdlog::debug("[GetRationalBSplineCurveWithKnots({})]");
 		std::vector<glm::dvec3> c;
-
-		for (double i = 0; i < 1; i += 0.05)
+		double step = 1.0/numCurvePoints;
+		for (double i = 0; i < 1; i += step)
 		{
 			glm::dvec3 point = InterpolateRationalBSplineCurveWithKnots(i, degree, points, knots, weights);
 			c.push_back(point);
@@ -365,95 +364,9 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 	{
 		spdlog::debug("[GetEllipseCurve({})]");
 		IfcCurve c;
-		if(normalToCenterEnding)
-		{
-			double sweep_angle = (endRad - startRad);
+		
+		c.points = (bimGeometry::GetEllipseCurve(radiusX, radiusY, numSegments, placement, startRad, endRad, swap, normalToCenterEnding)).points;
 
-			double step = sweep_angle / (numSegments - 1);
-
-			if(endRad > startRad)
-			{
-				startRad -= step /2;
-				endRad += step /2;
-			}
-			if(endRad <= startRad)
-			{
-				startRad += step /2;
-				endRad -= step /2;
-			}
-
-			for (int i = 0; i < numSegments; i++)
-			{
-				double ratio = static_cast<double>(i) / (numSegments - 1);
-				double angle = startRad + ratio * (endRad - startRad);
-
-				glm::dvec2 circleCoordinate;
-				if (swap)
-				{
-					circleCoordinate = glm::dvec2(
-						radiusX * std::cos(angle),
-						radiusY * std::sin(angle));
-				}
-				else
-				{
-					circleCoordinate = glm::dvec2(
-						radiusX * std::sin(angle),
-						radiusY * std::cos(angle));
-				}
-				glm::dvec2 pos = placement * glm::dvec3(circleCoordinate, 1);
-				c.points.push_back(glm::dvec3(pos,0));
-			}
-
-			c.points[0] = (c.points[0] + c.points[1]) * 0.5;
-
-			c.points[c.points.size() - 1] = (c.points[c.points.size() - 1] + c.points[c.points.size() - 2]) * 0.5;
-
-			// check for a closed curve
-			if (endRad == CONST_PI * 2 && startRad == 0)
-			{
-				c.points.push_back(c.points[0]);
-
-				if (MatrixFlipsTriangles(placement))
-				{
-					c.Invert();
-				}
-			}
-		}
-		else
-		{
-			for (int i = 0; i < numSegments; i++)
-			{
-				double ratio = static_cast<double>(i) / (numSegments - 1);
-				double angle = startRad + ratio * (endRad - startRad);
-
-				glm::dvec2 circleCoordinate;
-				if (swap)
-				{
-					circleCoordinate = glm::dvec2(
-						radiusX * std::cos(angle),
-						radiusY * std::sin(angle));
-				}
-				else
-				{
-					circleCoordinate = glm::dvec2(
-						radiusX * std::sin(angle),
-						radiusY * std::cos(angle));
-				}
-				glm::dvec2 pos = placement * glm::dvec3(circleCoordinate, 1);
-				c.points.push_back(glm::dvec3(pos,0));
-			}
-
-			// check for a closed curve
-			if (endRad == CONST_PI * 2 && startRad == 0)
-			{
-				c.points.push_back(c.points[0]);
-
-				if (MatrixFlipsTriangles(placement))
-				{
-					c.Invert();
-				}
-			}
-		}
 		return c;
 	}
 
@@ -462,293 +375,115 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 		return GetEllipseCurve(radius, radius, numSegments, placement);
 	}
 
-	inline IfcCurve GetRectangleCurve(double xdim, double ydim, glm::dmat3 placement = glm::dmat3(1))
+	inline IfcCurve GetRectangleCurve(double xdim, double ydim, glm::dmat3 placement = glm::dmat3(1), int numSegments = 12, double radius = 0)
 	{
-		double halfX = xdim / 2;
-		double halfY = ydim / 2;
-
-		glm::dvec2 bl = placement * glm::dvec3(-halfX, -halfY, 1);
-		glm::dvec2 br = placement * glm::dvec3(halfX, -halfY, 1);
-
-		glm::dvec2 tl = placement * glm::dvec3(-halfX, halfY, 1);
-		glm::dvec2 tr = placement * glm::dvec3(halfX, halfY, 1);
-
+		glm::dmat4 placement4 = glm::dmat4(
+			glm::dvec4(placement[0], 0.0),  // First column + w=0
+			glm::dvec4(placement[1], 0.0),  // Second column + w=0  
+			glm::dvec4(0.0, 0.0, 1.0, 0.0),  // Third column + w=0
+			glm::dvec4(placement[2][0], placement[2][1], 0.0, 1.0)  // Translation + w=1
+		);
+		bimGeometry::Curve temp = bimGeometry::GetRectangleCurve(xdim, ydim, placement4, numSegments, radius);
 		IfcCurve c;
-		c.Add(bl);
-		c.Add(br);
-		c.Add(tr);
-		c.Add(tl);
-		c.Add(bl);
-
-		if (MatrixFlipsTriangles(placement))
-		{
-			c.Invert();
-		}
-
+		c.points = temp.points;
 		return c;
 	}
 
 	inline IfcCurve GetIShapedCurve(double width, double depth, double webThickness, double flangeThickness, bool hasFillet, double filletRadius, glm::dmat3 placement = glm::dmat3(1))
 	{
+		glm::dmat4 placement4 = glm::dmat4(
+			glm::dvec4(placement[0], 0.0),  // First column + w=0
+			glm::dvec4(placement[1], 0.0),  // Second column + w=0  
+			glm::dvec4(0.0, 0.0, 1.0, 0.0),  // Third column + w=0
+			glm::dvec4(placement[2][0], placement[2][1], 0.0, 1.0)  // Translation + w=1
+		);
+		bimGeometry::Curve temp = bimGeometry::GetIShapedCurve(width, depth, webThickness, flangeThickness, hasFillet, filletRadius, placement4);
 		IfcCurve c;
-
-		double hw = width / 2;
-		double hd = depth / 2;
-		double hweb = webThickness / 2;
-
-		c.points.push_back(placement * glm::dvec3(-hw, +hd, 1));				   // TL
-		c.points.push_back(placement * glm::dvec3(+hw, +hd, 1));				   // TR
-		c.points.push_back(placement * glm::dvec3(+hw, +hd - flangeThickness, 1)); // TR knee
-
-		if (hasFillet)
-		{
-			// TODO: interpolate
-			c.points.push_back(placement * glm::dvec3(+hweb + filletRadius, +hd - flangeThickness, 1)); // TR elbow start
-			c.points.push_back(placement * glm::dvec3(+hweb, +hd - flangeThickness - filletRadius, 1)); // TR elbow end
-
-			c.points.push_back(placement * glm::dvec3(+hweb, -hd + flangeThickness + filletRadius, 1)); // BR elbow start
-			c.points.push_back(placement * glm::dvec3(+hweb + filletRadius, -hd + flangeThickness, 1)); // BR elbow end
-		}
-		else
-		{
-			c.points.push_back(placement * glm::dvec3(+hweb, +hd - flangeThickness, 1)); // TR elbow
-			c.points.push_back(placement * glm::dvec3(+hweb, -hd + flangeThickness, 1)); // BR elbow
-		}
-
-		c.points.push_back(placement * glm::dvec3(+hw, -hd + flangeThickness, 1)); // BR knee
-		c.points.push_back(placement * glm::dvec3(+hw, -hd, 1));				   // BR
-
-		c.points.push_back(placement * glm::dvec3(-hw, -hd, 1));				   // BL
-		c.points.push_back(placement * glm::dvec3(-hw, -hd + flangeThickness, 1)); // BL knee
-
-		if (hasFillet)
-		{
-			// TODO: interpolate
-			c.points.push_back(placement * glm::dvec3(-hweb - filletRadius, -hd + flangeThickness, 1)); // BL elbow start
-			c.points.push_back(placement * glm::dvec3(-hweb, -hd + flangeThickness + filletRadius, 1)); // BL elbow end
-
-			c.points.push_back(placement * glm::dvec3(-hweb, +hd - flangeThickness - filletRadius, 1)); // TL elbow start
-			c.points.push_back(placement * glm::dvec3(-hweb - filletRadius, +hd - flangeThickness, 1)); // TL elbow end
-		}
-		else
-		{
-			c.points.push_back(placement * glm::dvec3(-hweb, -hd + flangeThickness, 1)); // BL elbow
-			c.points.push_back(placement * glm::dvec3(-hweb, +hd - flangeThickness, 1)); // TL elbow
-		}
-
-		c.points.push_back(placement * glm::dvec3(-hw, +hd - flangeThickness, 1)); // TL knee
-		c.points.push_back(placement * glm::dvec3(-hw, +hd, 1));				   // TL
-
-		if (MatrixFlipsTriangles(placement))
-		{
-			c.Invert();
-		}
-
+		c.points = temp.points;
 		return c;
 	}
 
 	inline IfcCurve GetUShapedCurve(double depth, double flangeWidth, double webThickness, double flangeThickness, double filletRadius, double edgeRadius, double flangeSlope, glm::dmat3 placement = glm::dmat3(1))
 	{
+		glm::dmat4 placement4 = glm::dmat4(
+			glm::dvec4(placement[0], 0.0),  // First column + w=0
+			glm::dvec4(placement[1], 0.0),  // Second column + w=0  
+			glm::dvec4(0.0, 0.0, 1.0, 0.0),  // Third column + w=0
+			glm::dvec4(placement[2][0], placement[2][1], 0.0, 1.0)  // Translation + w=1
+		);
+		bimGeometry::Curve temp = bimGeometry::GetUShapedCurve(depth, flangeWidth, webThickness, flangeThickness, filletRadius, edgeRadius, flangeSlope, placement4);
 		IfcCurve c;
-
-		double hd = depth / 2;
-		double hw = flangeWidth / 2;
-		//		double hweb = webThickness / 2;
-		double slopeOffsetRight = flangeSlope * hw;
-		double slopeOffsetLeft = flangeSlope * (hw - webThickness);
-		// double flangeReferencePointY = hd - flangeThickness;
-
-		// TODO: implement the radius
-
-		c.points.push_back(placement * glm::dvec3(-hw, +hd, 1));
-		c.points.push_back(placement * glm::dvec3(+hw, +hd, 1));
-
-		c.points.push_back(placement * glm::dvec3(+hw, +hd - flangeThickness + slopeOffsetRight, 1));
-
-		c.points.push_back(placement * glm::dvec3(-hw + webThickness, +hd - flangeThickness, 1 - slopeOffsetLeft));
-		c.points.push_back(placement * glm::dvec3(-hw + webThickness, -hd + flangeThickness, 1 + slopeOffsetLeft));
-
-		c.points.push_back(placement * glm::dvec3(+hw, -hd + flangeThickness - slopeOffsetRight, 1));
-
-		c.points.push_back(placement * glm::dvec3(+hw, -hd, 1));
-		c.points.push_back(placement * glm::dvec3(-hw, -hd, 1));
-
-		c.points.push_back(placement * glm::dvec3(-hw, +hd, 1));
-
-		if (MatrixFlipsTriangles(placement))
-		{
-			c.Invert();
-		}
-
+		c.points = temp.points;
 		return c;
 	}
 
 	inline IfcCurve GetLShapedCurve(double width, double depth, double thickness, bool hasFillet, double filletRadius, double edgeRadius, double legSlope, glm::dmat3 placement = glm::dmat3(1))
 	{
+		glm::dmat4 placement4 = glm::dmat4(
+			glm::dvec4(placement[0], 0.0),  // First column + w=0
+			glm::dvec4(placement[1], 0.0),  // Second column + w=0  
+			glm::dvec4(0.0, 0.0, 1.0, 0.0),  // Third column + w=0
+			glm::dvec4(placement[2][0], placement[2][1], 0.0, 1.0)  // Translation + w=1
+		);
+		bimGeometry::Curve temp = bimGeometry::GetLShapedCurve(width, depth, thickness, hasFillet, filletRadius, edgeRadius, legSlope, placement4);
 		IfcCurve c;
-
-		double hw = width / 2;
-		double hd = depth / 2;
-		double hweb = thickness / 2;
-
-		c.points.push_back(placement * glm::dvec3(-hw, +hd, 1));
-		c.points.push_back(placement * glm::dvec3(-hw, -hd, 1));
-		c.points.push_back(placement * glm::dvec3(+hw, -hd, 1));
-
-		if (hasFillet)
-		{
-			// TODO: Create interpolation and sloped lines
-			c.points.push_back(placement * glm::dvec3(+hw, -hd + thickness, 1));
-			c.points.push_back(placement * glm::dvec3(-hw + thickness, -hd + thickness, 1));
-			c.points.push_back(placement * glm::dvec3(-hw + thickness, +hd, 1));
-		}
-		else
-		{
-			c.points.push_back(placement * glm::dvec3(+hw, -hd + thickness, 1));
-			c.points.push_back(placement * glm::dvec3(-hw + thickness, -hd + thickness, 1));
-			c.points.push_back(placement * glm::dvec3(-hw + thickness, +hd, 1));
-		}
-
-		c.points.push_back(placement * glm::dvec3(-hw, +hd, 1));
-
-		if (MatrixFlipsTriangles(placement))
-		{
-			c.Invert();
-		}
-
+		c.points = temp.points;
 		return c;
 	}
 
 	inline IfcCurve GetTShapedCurve(double width, double depth, double thickness, bool hasFillet, double filletRadius, double edgeRadius, double legSlope, glm::dmat3 placement = glm::dmat3(1))
 	{
+		glm::dmat4 placement4 = glm::dmat4(
+			glm::dvec4(placement[0], 0.0),  // First column + w=0
+			glm::dvec4(placement[1], 0.0),  // Second column + w=0  
+			glm::dvec4(0.0, 0.0, 1.0, 0.0),  // Third column + w=0
+			glm::dvec4(placement[2][0], placement[2][1], 0.0, 1.0)  // Translation + w=1
+		);
+		bimGeometry::Curve temp = bimGeometry::GetTShapedCurve(width, depth, thickness, hasFillet, filletRadius, edgeRadius, legSlope, placement4);
 		IfcCurve c;
-
-		double hw = width / 2;
-		double hd = depth / 2;
-		double hweb = thickness / 2;
-
-		c.points.push_back(placement * glm::dvec3(hw, hd, 1));
-
-		if (hasFillet)
-		{
-			// TODO: Create interpolation and sloped lines
-			c.points.push_back(placement * glm::dvec3(hw, hd - thickness, 1));
-			c.points.push_back(placement * glm::dvec3(hweb, hd - thickness, 1));
-			c.points.push_back(placement * glm::dvec3(hweb, -hd, 1));
-			c.points.push_back(placement * glm::dvec3(-hweb, -hd, 1));
-			c.points.push_back(placement * glm::dvec3(-hweb, hd - thickness, 1));
-			c.points.push_back(placement * glm::dvec3(-hw, hd - thickness, 1));
-			c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
-		}
-		else
-		{
-			c.points.push_back(placement * glm::dvec3(hw, hd - thickness, 1));
-			c.points.push_back(placement * glm::dvec3(hweb, hd - thickness, 1));
-			c.points.push_back(placement * glm::dvec3(hweb, -hd, 1));
-			c.points.push_back(placement * glm::dvec3(-hweb, -hd, 1));
-			c.points.push_back(placement * glm::dvec3(-hweb, hd - thickness, 1));
-			c.points.push_back(placement * glm::dvec3(-hw, hd - thickness, 1));
-			c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
-		}
-
-		c.points.push_back(placement * glm::dvec3(hw, hd, 1));
-
-		if (MatrixFlipsTriangles(placement))
-		{
-			c.Invert();
-		}
-
+		c.points = temp.points;
 		return c;
 	}
 
 	inline IfcCurve GetCShapedCurve(double width, double depth, double girth, double thickness, bool hasFillet, double filletRadius, glm::dmat3 placement = glm::dmat3(1))
 	{
+		glm::dmat4 placement4 = glm::dmat4(
+			glm::dvec4(placement[0], 0.0),  // First column + w=0
+			glm::dvec4(placement[1], 0.0),  // Second column + w=0  
+			glm::dvec4(0.0, 0.0, 1.0, 0.0),  // Third column + w=0
+			glm::dvec4(placement[2][0], placement[2][1], 0.0, 1.0)  // Translation + w=1
+		);
+		bimGeometry::Curve temp = bimGeometry::GetCShapedCurve(width, depth, girth, thickness, hasFillet, filletRadius, placement4);
 		IfcCurve c;
-
-		double hw = width / 2;
-		double hd = depth / 2;
-		// double hweb = thickness / 2;
-
-		c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
-		c.points.push_back(placement * glm::dvec3(hw, hd, 1));
-
-		if (hasFillet)
-		{
-			// TODO: Create interpolation and sloped lines
-		}
-		else
-		{
-			c.points.push_back(placement * glm::dvec3(hw, hd - girth, 1));
-			c.points.push_back(placement * glm::dvec3(hw - thickness, hd - girth, 1));
-			c.points.push_back(placement * glm::dvec3(hw - thickness, hd - thickness, 1));
-			c.points.push_back(placement * glm::dvec3(-hw + thickness, hd - thickness, 1));
-			c.points.push_back(placement * glm::dvec3(-hw + thickness, -hd + thickness, 1));
-			c.points.push_back(placement * glm::dvec3(hw - thickness, -hd + thickness, 1));
-			c.points.push_back(placement * glm::dvec3(hw - thickness, -hd + girth, 1));
-			c.points.push_back(placement * glm::dvec3(hw, -hd + girth, 1));
-			c.points.push_back(placement * glm::dvec3(hw, -hd, 1));
-			c.points.push_back(placement * glm::dvec3(-hw, -hd, 1));
-		}
-
-		c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
-
-		if (MatrixFlipsTriangles(placement))
-		{
-			c.Invert();
-		}
-
+		c.points = temp.points;
 		return c;
 	}
 
 	inline IfcCurve GetZShapedCurve(double depth, double flangeWidth, double webThickness, double flangeThickness, double filletRadius, double edgeRadius, glm::dmat3 placement = glm::dmat3(1))
 	{
+		glm::dmat4 placement4 = glm::dmat4(
+			glm::dvec4(placement[0], 0.0),  // First column + w=0
+			glm::dvec4(placement[1], 0.0),  // Second column + w=0  
+			glm::dvec4(0.0, 0.0, 1.0, 0.0),  // Third column + w=0
+			glm::dvec4(placement[2][0], placement[2][1], 0.0, 1.0)  // Translation + w=1
+		);
+		bimGeometry::Curve temp = bimGeometry::GetZShapedCurve(depth, flangeWidth, webThickness, flangeThickness, filletRadius, edgeRadius, placement4);
 		IfcCurve c;
-		double hw = flangeWidth / 2;
-		double hd = depth / 2;
-		double hweb = webThickness / 2;
-		// double hfla = flangeThickness / 2;
-
-		c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
-		c.points.push_back(placement * glm::dvec3(hweb, hd, 1));
-		c.points.push_back(placement * glm::dvec3(hweb, -hd + flangeThickness, 1));
-		c.points.push_back(placement * glm::dvec3(hw, -hd + flangeThickness, 1));
-		c.points.push_back(placement * glm::dvec3(hw, -hd, 1));
-		c.points.push_back(placement * glm::dvec3(-hweb, -hd, 1));
-		c.points.push_back(placement * glm::dvec3(-hweb, hd - flangeThickness, 1));
-		c.points.push_back(placement * glm::dvec3(-hw, hd - flangeThickness, 1));
-		c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
-
-		if (MatrixFlipsTriangles(placement))
-		{
-			c.Invert();
-		}
-
+		c.points = temp.points;
 		return c;
 	}
 
 	inline IfcCurve GetTrapeziumCurve(double bottomXDim, double topXDim, double yDim, double topXOffset, glm::dmat3 placement = glm::dmat3(1))
 	{
-		double halfX = bottomXDim / 2;
-		double halfY = yDim / 2;
-
-		glm::dvec2 bl = placement * glm::dvec3(-halfX, -halfY, 1);
-		glm::dvec2 br = placement * glm::dvec3(halfX, -halfY, 1);
-
-		glm::dvec2 tl = placement * glm::dvec3(-halfX + topXOffset, halfY, 1);
-		glm::dvec2 tr = placement * glm::dvec3(-halfX + topXOffset + topXDim, halfY, 1);
-
+		glm::dmat4 placement4 = glm::dmat4(
+			glm::dvec4(placement[0], 0.0),  // First column + w=0
+			glm::dvec4(placement[1], 0.0),  // Second column + w=0  
+			glm::dvec4(0.0, 0.0, 1.0, 0.0),  // Third column + w=0
+			glm::dvec4(placement[2][0], placement[2][1], 0.0, 1.0)  // Translation + w=1
+		);
+		bimGeometry::Curve temp = bimGeometry::GetTrapeziumCurve(bottomXDim, topXDim, yDim, topXOffset, placement4);
 		IfcCurve c;
-		c.Add(bl);
-		c.Add(br);
-		c.Add(tr);
-		c.Add(tl);
-		c.Add(bl);
-
-		if (MatrixFlipsTriangles(placement))
-		{
-			c.Invert();
-		}
-
+		c.points = temp.points;
 		return c;
 	}
 
