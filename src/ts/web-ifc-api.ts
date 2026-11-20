@@ -163,6 +163,31 @@ export interface FlatMesh {
   delete(): void;
 }
 
+/**
+ * Options of a meshes streaming session (see IfcAPI.CreateAllMeshesStreamingSession).
+ */
+export interface MeshesStreamingSessionOptions {
+  /** Whether to apply the model's linear scaling factor to the geometry (default: true). */
+  applyLinearScalingFactor?: boolean;
+}
+
+/**
+ * A pull-based stream over the meshes of a model (see IfcAPI.CreateAllMeshesStreamingSession):
+ * a standard iterator, to drive by hand with `next()` or with `for...of`.
+ */
+export interface MeshesStreamingSession extends IterableIterator<FlatMesh> {
+  /**
+   * Meshes the next element of the model.
+   * @returns `{ value: mesh, done: false }`, then `{ value: undefined, done: true }` once every
+   * mesh has been streamed (or the session has been closed, or its model has been closed).
+   */
+  next(): IteratorResult<FlatMesh>;
+  /**
+   * Closes the session before its last mesh. `for...of` calls it when the loop is left early.
+   */
+  return(): IteratorResult<FlatMesh>;
+}
+
 /** A Body item the brep engine built (see IfcAPI.StreamAllBrepMeshes). */
 export interface BrepShell {
   id: number;
@@ -1582,6 +1607,51 @@ export class IfcAPI {
    */
   IsModelOpen(modelID: number): boolean {
     return this.wasmModule.IsModelOpen(modelID);
+  }
+
+  /**
+   * Opens a streaming session over all the meshes of a model. It streams the same meshes as
+   * StreamAllMeshes, in the same order, but they are pulled by the caller instead of being pushed
+   * to a callback: each call to `next()` meshes one more element, so the caller sets the pace
+   * (to yield to the event loop between two meshes, to apply back-pressure, to stop early...).
+   *
+   * ```ts
+   * for (const mesh of ifcApi.CreateAllMeshesStreamingSession(modelID)) {
+   *   // use mesh.geometries with GetGeometry / GetVertexArray / GetIndexArray
+   * }
+   * ```
+   *
+   * The geometry data of a mesh is only available until the next mesh of the model is requested:
+   * consume it (GetGeometry) before calling `next()` again. For the same reason, sessions over the
+   * same model should not be interleaved; sessions over different models are independent.
+   *
+   * A session ends by itself after its last mesh and when its model is closed. To abandon it
+   * earlier, call `return()` (`for...of` does it when the loop is left with `break`).
+   *
+   * @param modelID Model handle retrieved by OpenModel
+   * @param options Options of the session @see MeshesStreamingSessionOptions
+   * @returns an iterator over the meshes of the model, already over when the model is not open
+   */
+  CreateAllMeshesStreamingSession(
+    modelID: number,
+    options: MeshesStreamingSessionOptions = {}
+  ): MeshesStreamingSession {
+    // captured: the session stays usable (and simply ends) after Dispose()
+    const wasmModule = this.wasmModule;
+    const sessionID: number = wasmModule.CreateAllMeshesStreamingSession(modelID, options);
+
+    return {
+      next(): IteratorResult<FlatMesh> {
+        return wasmModule.AllMeshesStreamingSessionNext(sessionID);
+      },
+      return(): IteratorResult<FlatMesh> {
+        wasmModule.CloseAllMeshesStreamingSession(sessionID);
+        return { value: undefined, done: true };
+      },
+      [Symbol.iterator]() {
+        return this;
+      },
+    };
   }
 
   /**

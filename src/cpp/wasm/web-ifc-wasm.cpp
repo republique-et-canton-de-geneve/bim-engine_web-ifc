@@ -9,10 +9,13 @@
 #include <cstdint>
 #include <cmath>
 #include <memory>
+#include <unordered_map>
+#include <utility>
 #include <emscripten/bind.h>
 #include <spdlog/spdlog.h>
 #include <limits>
 #include "../web-ifc/modelmanager/ModelManager.h"
+#include "../web-ifc/geometry/IfcMeshIterator.h"
 #include "../version.h"
 #include "../web-ifc/parsing/StepBinary.h"
 #include "../web-ifc/geometry/operations/bim-geometry/extrusion.h"
@@ -43,6 +46,18 @@ constexpr bool MT_ENABLED = false;
 
 webifc::manager::ModelManager manager = new webifc::manager::ModelManager(MT_ENABLED);
 
+// Pull-based mesh streaming (see CreateAllMeshesStreamingSession): the sessions are owned here and
+// addressed by ID, so that any number of them can run side by side and that they die with their
+// model: an iterator left over on the JS side then just ends instead of reading a closed model.
+struct MeshesStreamingSession
+{
+    uint32_t modelID;
+    webifc::geometry::IfcMeshIterator iterator;
+};
+static std::unordered_map<uint32_t, MeshesStreamingSession> meshesStreamingSessions;
+// 0 is never handed out: it is the ID of a session that could not be created
+static uint32_t lastMeshesStreamingSessionID = 0;
+
 int CreateModel(webifc::manager::LoaderSettings settings)
 {
     return manager.CreateModel(settings);
@@ -50,6 +65,7 @@ int CreateModel(webifc::manager::LoaderSettings settings)
 
 void CloseAllModels()
 {
+    meshesStreamingSessions.clear();
     return manager.CloseAllModels();
 }
 
@@ -110,6 +126,8 @@ void CloseModel(uint32_t modelID)
 #ifdef BREP_ENGINE
     brepEngines.erase(modelID);
 #endif
+    std::erase_if(meshesStreamingSessions, [modelID](const auto &session)
+                  { return session.second.modelID == modelID; });
     return manager.CloseModel(modelID);
 }
 
@@ -218,6 +236,66 @@ void StreamAllMeshes(uint32_t modelID, emscripten::val callback, bool applyLinea
         types.push_back(type);
     }
     StreamAllMeshesWithTypes(modelID, types, callback, applyLinearScalingFactor);
+}
+
+// As StreamAllMeshes, but pulled by the client: opens a session over the meshes of the model and
+// returns its ID, to be handed to AllMeshesStreamingSessionNext. `options` is an object holding any
+// of the settings of webifc::geometry::IfcMeshIteratorSettings, the missing ones keep their default.
+// Returns 0, the ID of a session that is already over, when the model is not open.
+uint32_t CreateAllMeshesStreamingSession(uint32_t modelID, emscripten::val options)
+{
+    if (!manager.IsModelOpen(modelID))
+        return 0;
+
+    webifc::geometry::IfcMeshIteratorSettings settings;
+    if (!options.isUndefined() && !options.isNull())
+    {
+        emscripten::val applyLinearScalingFactor = options["applyLinearScalingFactor"];
+        if (!applyLinearScalingFactor.isUndefined())
+            settings.applyLinearScalingFactor = applyLinearScalingFactor.as<bool>();
+    }
+
+    uint32_t sessionID = ++lastMeshesStreamingSessionID;
+    meshesStreamingSessions.try_emplace(sessionID, MeshesStreamingSession{modelID, webifc::geometry::IfcMeshIterator(*manager.GetIfcLoader(modelID), manager.GetSchemaManager(), *manager.GetGeometryProcessor(modelID), std::move(settings))});
+    return sessionID;
+}
+
+// Next step of a session, as a JS iterator result: { value: the next mesh, done: false }, then
+// { value: undefined, done: true } once the session is over, closed or unknown. The geometry data of
+// a mesh is alive until the next call for the same model.
+emscripten::val AllMeshesStreamingSessionNext(uint32_t sessionID)
+{
+    emscripten::val result = emscripten::val::object();
+
+    auto session = meshesStreamingSessions.find(sessionID);
+    if (session != meshesStreamingSessions.end())
+    {
+        auto mesh = session->second.iterator.Next();
+        if (mesh)
+        {
+            // prepare the geometry data
+            auto geomLoader = manager.GetGeometryProcessor(session->second.modelID);
+            for (auto &geom : mesh->geometries)
+                geomLoader->GetGeometry(geom.geometryExpressID).GetVertexData();
+
+            result.set("value", *mesh);
+            result.set("done", false);
+            return result;
+        }
+
+        // over: nothing left to keep for this session
+        meshesStreamingSessions.erase(session);
+    }
+
+    result.set("value", emscripten::val::undefined());
+    result.set("done", true);
+    return result;
+}
+
+// Ends a session before its last mesh. Does nothing when the session is already over.
+void CloseAllMeshesStreamingSession(uint32_t sessionID)
+{
+    meshesStreamingSessions.erase(sessionID);
 }
 
 #ifdef BREP_ENGINE
@@ -1462,6 +1540,9 @@ EMSCRIPTEN_BINDINGS(my_module)
     emscripten::function("SetBrepBooleansOnly", &SetBrepBooleansOnly);
 #endif
     emscripten::function("StreamAllMeshesWithTypes", &StreamAllMeshesWithTypesVal);
+    emscripten::function("CreateAllMeshesStreamingSession", &CreateAllMeshesStreamingSession);
+    emscripten::function("AllMeshesStreamingSessionNext", &AllMeshesStreamingSessionNext);
+    emscripten::function("CloseAllMeshesStreamingSession", &CloseAllMeshesStreamingSession);
     emscripten::function("GetLine", &GetLine);
     emscripten::function("GetLines", &GetLines);
     emscripten::function("GetLineType", &GetLineType);
