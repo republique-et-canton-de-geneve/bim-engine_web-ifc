@@ -169,6 +169,13 @@ export interface FlatMesh {
 export interface MeshesStreamingSessionOptions {
   /** Whether to apply the model's linear scaling factor to the geometry (default: true). */
   applyLinearScalingFactor?: boolean;
+  /**
+   * IFC types whose elements are left out of the stream. Defaults to the openings:
+   * `[IFCOPENINGELEMENT, IFCOPENINGSTANDARDCASE]`. Unlike StreamAllMeshes, a session
+   * therefore streams the spaces: add `IFCSPACE` to the list to leave them out as well.
+   * Only the listed types are excluded, not their subtypes.
+   */
+  excludedTypes?: Array<number>;
 }
 
 /**
@@ -1610,10 +1617,14 @@ export class IfcAPI {
   }
 
   /**
-   * Opens a streaming session over all the meshes of a model. It streams the same meshes as
-   * StreamAllMeshes, in the same order, but they are pulled by the caller instead of being pushed
-   * to a callback: each call to `next()` meshes one more element, so the caller sets the pace
-   * (to yield to the event loop between two meshes, to apply back-pressure, to stop early...).
+   * Opens a streaming session over all the meshes of a model. As with StreamAllMeshes, every
+   * element that has geometry is meshed in turn, but the meshes are pulled by the caller instead
+   * of being pushed to a callback: each call to `next()` meshes one more element, so the caller
+   * sets the pace (to yield to the event loop between two meshes, to apply back-pressure, to stop
+   * early...).
+   *
+   * Unlike StreamAllMeshes, a session streams the spaces (IFCSPACE) by default, see
+   * MeshesStreamingSessionOptions.excludedTypes.
    *
    * ```ts
    * for (const mesh of ifcApi.CreateAllMeshesStreamingSession(modelID)) {

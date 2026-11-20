@@ -27,6 +27,19 @@ function streamAllMeshesExpressIDs(model: number): number[] {
     return expressIDs;
 }
 
+/** expressIDs of the meshes pushed by StreamAllMeshesWithTypes, in order */
+function streamMeshesWithTypesExpressIDs(model: number, types: number[]): number[] {
+    const expressIDs: number[] = [];
+    ifcApi.StreamAllMeshesWithTypes(model, types, (mesh: FlatMesh) => {
+        expressIDs.push(mesh.expressID);
+    });
+    return expressIDs;
+}
+
+function sorted(expressIDs: number[]): number[] {
+    return [...expressIDs].sort((a, b) => a - b);
+}
+
 /** expressIDs of the meshes left in a session, in order */
 function drain(session: MeshesStreamingSession): number[] {
     const expressIDs: number[] = [];
@@ -64,11 +77,36 @@ afterAll(() => {
 })
 
 describe('MeshesStreamingSession', () => {
-    test('streams the same meshes as StreamAllMeshes, in the same order', () => {
+    test('streams the meshes of StreamAllMeshes and the spaces', () => {
         const pushed = streamAllMeshesExpressIDs(modelID);
+        const spaces = streamMeshesWithTypesExpressIDs(modelID, [WebIFC.IFCSPACE]);
         const pulled = drain(ifcApi.CreateAllMeshesStreamingSession(modelID));
         expect(pushed.length).toBeGreaterThan(0);
+        expect(spaces.length).toBeGreaterThan(0);
+        expect(sorted(pulled)).toEqual(sorted([...pushed, ...spaces]));
+    })
+
+    test('streams the same meshes as StreamAllMeshes, in the same order, once the spaces are excluded', () => {
+        const pushed = streamAllMeshesExpressIDs(modelID);
+        const pulled = drain(ifcApi.CreateAllMeshesStreamingSession(modelID, {
+            excludedTypes: [WebIFC.IFCOPENINGELEMENT, WebIFC.IFCOPENINGSTANDARDCASE, WebIFC.IFCSPACE]
+        }));
         expect(pulled).toEqual(pushed);
+    })
+
+    test('leaves out the excluded types only', () => {
+        const byDefault = drain(ifcApi.CreateAllMeshesStreamingSession(modelID));
+        const openings = streamMeshesWithTypesExpressIDs(modelID, [WebIFC.IFCOPENINGELEMENT, WebIFC.IFCOPENINGSTANDARDCASE]);
+
+        // nothing excluded: the openings come as well (if the model has any)
+        const everything = drain(ifcApi.CreateAllMeshesStreamingSession(modelID, { excludedTypes: [] }));
+        expect(sorted(everything)).toEqual(sorted([...byDefault, ...openings]));
+
+        // the excluded types replace the default ones
+        const excludedType = ifcApi.GetLineType(modelID, byDefault[0]);
+        const filtered = drain(ifcApi.CreateAllMeshesStreamingSession(modelID, { excludedTypes: [excludedType] }));
+        expect(sorted(filtered)).toEqual(sorted(everything.filter(expressID => ifcApi.GetLineType(modelID, expressID) != excludedType)));
+        expect(filtered.length).toBeLessThan(everything.length);
     })
 
     test('can be driven by hand with next()', () => {
@@ -81,7 +119,7 @@ describe('MeshesStreamingSession', () => {
             result = session.next();
         }
         expect(result).toEqual(END_OF_SESSION);
-        expect(expressIDs).toEqual(streamAllMeshesExpressIDs(modelID));
+        expect(expressIDs).toEqual(drain(ifcApi.CreateAllMeshesStreamingSession(modelID)));
     })
 
     test('stays over once every mesh has been streamed', () => {
@@ -136,7 +174,7 @@ describe('MeshesStreamingSession', () => {
     })
 
     test('starts over with each new session', () => {
-        const expected = streamAllMeshesExpressIDs(modelID);
+        const expected = drain(ifcApi.CreateAllMeshesStreamingSession(modelID));
         const abandoned = ifcApi.CreateAllMeshesStreamingSession(modelID);
         take(abandoned, 5);
         expect(drain(ifcApi.CreateAllMeshesStreamingSession(modelID))).toEqual(expected);
@@ -146,7 +184,7 @@ describe('MeshesStreamingSession', () => {
 
     test('runs side by side with a session over another model', () => {
         const otherModelID = openExample();
-        const expected = streamAllMeshesExpressIDs(modelID);
+        const expected = drain(ifcApi.CreateAllMeshesStreamingSession(modelID));
 
         const session = ifcApi.CreateAllMeshesStreamingSession(modelID);
         const otherSession = ifcApi.CreateAllMeshesStreamingSession(otherModelID);

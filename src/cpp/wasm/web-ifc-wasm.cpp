@@ -238,8 +238,9 @@ void StreamAllMeshes(uint32_t modelID, emscripten::val callback, bool applyLinea
     StreamAllMeshesWithTypes(modelID, types, callback, applyLinearScalingFactor);
 }
 
-// As StreamAllMeshes, but pulled by the client: opens a session over the meshes of the model and
-// returns its ID, to be handed to AllMeshesStreamingSessionNext. `options` is an object holding any
+// As StreamAllMeshes, but pulled by the client and with the spaces unless told otherwise: opens a
+// session over the meshes of the model and returns its ID, to be handed to
+// AllMeshesStreamingSessionNext. `options` is an object holding any
 // of the settings of webifc::geometry::IfcMeshIteratorSettings, the missing ones keep their default.
 // Returns 0, the ID of a session that is already over, when the model is not open.
 uint32_t CreateAllMeshesStreamingSession(uint32_t modelID, emscripten::val options)
@@ -253,6 +254,10 @@ uint32_t CreateAllMeshesStreamingSession(uint32_t modelID, emscripten::val optio
         emscripten::val applyLinearScalingFactor = options["applyLinearScalingFactor"];
         if (!applyLinearScalingFactor.isUndefined())
             settings.applyLinearScalingFactor = applyLinearScalingFactor.as<bool>();
+
+        emscripten::val excludedTypes = options["excludedTypes"];
+        if (!excludedTypes.isUndefined())
+            settings.excludedTypes = emscripten::convertJSArrayToNumberVector<uint32_t>(excludedTypes);
     }
 
     uint32_t sessionID = ++lastMeshesStreamingSessionID;

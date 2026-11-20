@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+#include <algorithm>
 #include <utility>
 #include "IfcMeshIterator.h"
-#include "../schema/ifc-schema.h"
 
 namespace webifc::geometry
 {
@@ -14,7 +14,7 @@ namespace webifc::geometry
     {
         for (uint32_t type : schemaManager.GetIfcElementList())
         {
-            if (type == schema::IFCOPENINGELEMENT || type == schema::IFCSPACE || type == schema::IFCOPENINGSTANDARDCASE)
+            if (std::find(_settings.excludedTypes.begin(), _settings.excludedTypes.end(), type) != _settings.excludedTypes.end())
             {
                 continue;
             }

@@ -12,6 +12,7 @@
 #include "IfcGeometryProcessor.h"
 #include "../parsing/IfcLoader.h"
 #include "../schema/IfcSchemaManager.h"
+#include "../schema/ifc-schema.h"
 
 namespace webifc::geometry
 {
@@ -21,6 +22,10 @@ namespace webifc::geometry
         // Whether to apply the model's linear scaling factor to the geometry
         // (see IfcGeometryProcessor::GetFlatMesh).
         bool applyLinearScalingFactor = true;
+        // IFC types whose elements are left out. By default the openings only:
+        // unlike the "stream all meshes" callbacks, the spaces (IFCSPACE) are
+        // visited. Add IFCSPACE to this list to leave them out as well.
+        std::vector<uint32_t> excludedTypes = {schema::IFCOPENINGELEMENT, schema::IFCOPENINGSTANDARDCASE};
     };
 
     // Pull-based traversal of the meshes of a model: the caller asks for the
@@ -28,8 +33,8 @@ namespace webifc::geometry
     // decides when the next element is meshed (and can stop at any point).
     //
     // The elements are visited in the same order as the "stream all meshes"
-    // callbacks: every IFC element type but the openings and the spaces, and for
-    // each type every element that has geometry.
+    // callbacks: every IFC element type but the excluded ones, and for each type
+    // every element that has geometry.
     //
     // Only the geometry of the last returned mesh is kept alive: it is released
     // from the geometry processor on the following call to Next(). The iterator

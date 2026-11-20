@@ -78,6 +78,8 @@ END-ISO-10303-21;
 
 const uint32_t PROXY_ID = 23;
 const uint32_t WALL_ID = 33;
+const uint32_t SPACE_ID = 43;
+const uint32_t OPENING_ID = 53;
 
 struct Model
 {
@@ -165,8 +167,8 @@ bool Nearly(double a, double b)
 
 } // namespace
 
-// As the "stream all meshes" callbacks: every element that has geometry, but
-// neither the openings nor the spaces.
+// By default: every element that has geometry, the spaces included, but not
+// the openings.
 TEST(MeshIteratorVisitsTheElementsThatHaveGeometry)
 {
     Model model;
@@ -175,12 +177,37 @@ TEST(MeshIteratorVisitsTheElementsThatHaveGeometry)
 
     const auto meshes = Drain(iterator);
 
-    const std::vector<uint32_t> expected = {PROXY_ID, WALL_ID};
+    const std::vector<uint32_t> expected = {PROXY_ID, WALL_ID, SPACE_ID};
     ASSERT_EQ((SortedExpressIDs(meshes) == expected), true);
     for (const auto &mesh : meshes)
     {
         ASSERT_EQ((mesh.geometries.size() > 0), true);
     }
+}
+
+// The excluded types replace the default ones: the spaces can be left out as
+// the "stream all meshes" callbacks do, and the openings can be let in.
+TEST(MeshIteratorLeavesOutTheExcludedTypes)
+{
+    Model model;
+
+    webifc::geometry::IfcMeshIteratorSettings withoutSpaces;
+    withoutSpaces.excludedTypes = {webifc::schema::IFCOPENINGELEMENT, webifc::schema::IFCOPENINGSTANDARDCASE, webifc::schema::IFCSPACE};
+    auto withoutSpacesIterator = model.Iterate(withoutSpaces);
+    const std::vector<uint32_t> expectedWithoutSpaces = {PROXY_ID, WALL_ID};
+    ASSERT_EQ((SortedExpressIDs(Drain(withoutSpacesIterator)) == expectedWithoutSpaces), true);
+
+    webifc::geometry::IfcMeshIteratorSettings everything;
+    everything.excludedTypes = {};
+    auto everythingIterator = model.Iterate(everything);
+    const std::vector<uint32_t> expectedEverything = {PROXY_ID, WALL_ID, SPACE_ID, OPENING_ID};
+    ASSERT_EQ((SortedExpressIDs(Drain(everythingIterator)) == expectedEverything), true);
+
+    webifc::geometry::IfcMeshIteratorSettings withoutWalls;
+    withoutWalls.excludedTypes = {webifc::schema::IFCWALL};
+    auto withoutWallsIterator = model.Iterate(withoutWalls);
+    const std::vector<uint32_t> expectedWithoutWalls = {PROXY_ID, SPACE_ID, OPENING_ID};
+    ASSERT_EQ((SortedExpressIDs(Drain(withoutWallsIterator)) == expectedWithoutWalls), true);
 }
 
 TEST(MeshIteratorStaysDoneOnceExhausted)
@@ -214,7 +241,7 @@ TEST(MeshIteratorKeepsOnlyTheLastMeshGeometry)
     ASSERT_EQ((VertexDataSize(model.processor, secondGeometryID) > 0), true);
     ASSERT_EQ(VertexDataSize(model.processor, firstGeometryID), 0u);
 
-    ASSERT_EQ(iterator.Next().has_value(), false);
+    Drain(iterator);
     ASSERT_EQ(VertexDataSize(model.processor, secondGeometryID), 0u);
 }
 
@@ -250,8 +277,7 @@ TEST(MeshIteratorsOverTheSameModelAreIndependent)
     ASSERT_EQ(a2->expressID, b2->expressID);
     ASSERT_EQ((a1->expressID != a2->expressID), true);
 
-    ASSERT_EQ(first.Next().has_value(), false);
-    ASSERT_EQ(second.Next().has_value(), false);
+    ASSERT_EQ((SortedExpressIDs(Drain(first)) == SortedExpressIDs(Drain(second))), true);
 }
 
 // The model is in millimetres: its linear scaling factor (0.001) ends up in the
