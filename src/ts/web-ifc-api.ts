@@ -176,6 +176,14 @@ export interface MeshesStreamingSessionOptions {
    * Only the listed types are excluded, not their subtypes.
    */
   excludedTypes?: Array<number>;
+  /**
+   * Colors by IFC type: every geometry of the elements of a listed type is streamed with the
+   * given color (and `hasColor` set), whatever its style in the model. Defaults to a half
+   * transparent orange for the spaces, which keeps the elements they enclose visible:
+   * `{ [IFCSPACE]: { x: 1, y: 0.5, z: 0, w: 0.5 } }`. Pass `{}` to keep the colors of the model.
+   * Only the listed types are recolored, not their subtypes.
+   */
+  colorOverrides?: Record<number, Color>;
 }
 
 /**
@@ -1623,8 +1631,8 @@ export class IfcAPI {
    * sets the pace (to yield to the event loop between two meshes, to apply back-pressure, to stop
    * early...).
    *
-   * Unlike StreamAllMeshes, a session streams the spaces (IFCSPACE) by default, see
-   * MeshesStreamingSessionOptions.excludedTypes.
+   * Unlike StreamAllMeshes, a session streams the spaces (IFCSPACE) by default, in a half
+   * transparent orange: see MeshesStreamingSessionOptions.excludedTypes and colorOverrides.
    *
    * ```ts
    * for (const mesh of ifcApi.CreateAllMeshesStreamingSession(modelID)) {
@@ -1649,7 +1657,17 @@ export class IfcAPI {
   ): MeshesStreamingSession {
     // captured: the session stays usable (and simply ends) after Dispose()
     const wasmModule = this.wasmModule;
-    const sessionID: number = wasmModule.CreateAllMeshesStreamingSession(modelID, options);
+    // the options left undefined keep the default of the wasm module
+    const sessionID: number = wasmModule.CreateAllMeshesStreamingSession(modelID, {
+      applyLinearScalingFactor: options.applyLinearScalingFactor,
+      excludedTypes: options.excludedTypes,
+      colorOverrides:
+        options.colorOverrides &&
+        Object.entries(options.colorOverrides).map(([type, color]) => ({
+          type: Number(type),
+          color,
+        })),
+    });
 
     return {
       next(): IteratorResult<FlatMesh> {

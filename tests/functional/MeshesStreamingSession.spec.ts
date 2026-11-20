@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as WebIFC from '../../dist/web-ifc-api-node.js';
 
 import type {
+    Color,
     FlatMesh,
     IfcAPI,
     MeshesStreamingSession
@@ -263,5 +264,105 @@ describe('MeshesStreamingSession', () => {
         expect(defaultTransformation).toEqual(Array.from(scaledMesh.geometries.get(0).flatTransformation));
         withDefaults.return();
         scaled.return();
+    })
+})
+
+describe('MeshesStreamingSession colors', () => {
+    const SPACE_ORANGE = { x: 1, y: 0.5, z: 0, w: 0.5 };
+
+    interface StreamedColor {
+        expressID: number;
+        type: number;
+        color: Color;
+        hasColor: boolean;
+    }
+
+    /** color of every geometry streamed by a session */
+    function streamedColors(session: MeshesStreamingSession): StreamedColor[] {
+        const colors: StreamedColor[] = [];
+        for (const mesh of session) {
+            const type = ifcApi.GetLineType(modelID, mesh.expressID);
+            for (let i = 0; i < mesh.geometries.size(); i++) {
+                const { color, hasColor } = mesh.geometries.get(i);
+                colors.push({ expressID: mesh.expressID, type, color, hasColor });
+            }
+        }
+        return colors;
+    }
+
+    /** colors of the model: the ones of GetFlatMesh for the same geometries */
+    function modelColors(streamed: StreamedColor[]): StreamedColor[] {
+        const meshes = new Map<number, FlatMesh>();
+        const nextGeometry = new Map<number, number>();
+        return streamed.map(({ expressID, type }) => {
+            if (!meshes.has(expressID)) meshes.set(expressID, ifcApi.GetFlatMesh(modelID, expressID));
+            const index = nextGeometry.get(expressID) ?? 0;
+            nextGeometry.set(expressID, index + 1);
+            const { color, hasColor } = meshes.get(expressID)!.geometries.get(index);
+            return { expressID, type, color, hasColor };
+        });
+    }
+
+    const isSpace = (streamed: StreamedColor) => streamed.type == WebIFC.IFCSPACE;
+    const isNotSpace = (streamed: StreamedColor) => !isSpace(streamed);
+
+    test('streams the spaces in a half transparent orange by default', () => {
+        const streamed = streamedColors(ifcApi.CreateAllMeshesStreamingSession(modelID));
+        const spaces = streamed.filter(isSpace);
+        expect(spaces.length).toBeGreaterThan(0);
+        for (const space of spaces) {
+            expect(space.color).toEqual(SPACE_ORANGE);
+            expect(space.hasColor).toBe(true);
+        }
+    })
+
+    test('keeps the colors of the model for the other elements', () => {
+        const streamed = streamedColors(ifcApi.CreateAllMeshesStreamingSession(modelID)).filter(isNotSpace);
+        expect(streamed.length).toBeGreaterThan(0);
+        expect(streamed).toEqual(modelColors(streamed));
+    })
+
+    test('keeps the colors of the model everywhere without color override', () => {
+        const streamed = streamedColors(ifcApi.CreateAllMeshesStreamingSession(modelID, { colorOverrides: {} }));
+        expect(streamed.filter(isSpace).length).toBeGreaterThan(0);
+        expect(streamed).toEqual(modelColors(streamed));
+    })
+
+    test('applies the color overrides, which replace the default one', () => {
+        const [first] = streamedColors(ifcApi.CreateAllMeshesStreamingSession(modelID)).filter(isNotSpace);
+        const override = { x: 0.25, y: 0.5, z: 0.75, w: 0.125 };
+
+        const streamed = streamedColors(ifcApi.CreateAllMeshesStreamingSession(modelID, {
+            colorOverrides: { [first.type]: override }
+        }));
+
+        const overridden = streamed.filter(({ type }) => type == first.type);
+        expect(overridden.length).toBeGreaterThan(0);
+        for (const { color, hasColor } of overridden) {
+            expect(color).toEqual(override);
+            expect(hasColor).toBe(true);
+        }
+        // everything else, the spaces included, comes with the colors of the model
+        const others = streamed.filter(({ type }) => type != first.type);
+        expect(others.filter(isSpace).length).toBeGreaterThan(0);
+        expect(others).toEqual(modelColors(others));
+    })
+
+    test('can change the color of the spaces', () => {
+        const blue = { x: 0, y: 0, z: 1, w: 0.25 };
+        const streamed = streamedColors(ifcApi.CreateAllMeshesStreamingSession(modelID, {
+            colorOverrides: { [WebIFC.IFCSPACE]: blue }
+        }));
+        const spaces = streamed.filter(isSpace);
+        expect(spaces.length).toBeGreaterThan(0);
+        for (const space of spaces) expect(space.color).toEqual(blue);
+    })
+
+    test('does not color the spaces left out of the stream', () => {
+        const streamed = streamedColors(ifcApi.CreateAllMeshesStreamingSession(modelID, {
+            excludedTypes: [WebIFC.IFCSPACE]
+        }));
+        expect(streamed.filter(isSpace)).toEqual([]);
+        expect(streamed).toEqual(modelColors(streamed));
     })
 })

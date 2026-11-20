@@ -40,7 +40,8 @@ namespace webifc::geometry
                     break;
                 }
 
-                _elements = _loader.GetExpressIDsWithType(_types[_nextTypeIndex++]);
+                _currentType = _types[_nextTypeIndex++];
+                _elements = _loader.GetExpressIDsWithType(_currentType);
                 _nextElementIndex = 0;
                 continue;
             }
@@ -50,6 +51,16 @@ namespace webifc::geometry
 
             if (!mesh.geometries.empty())
             {
+                auto colorOverride = _settings.colorOverrides.find(_currentType);
+                if (colorOverride != _settings.colorOverrides.end())
+                {
+                    for (auto &geometry : mesh.geometries)
+                    {
+                        geometry.color = colorOverride->second;
+                        geometry.hasColor = true;
+                    }
+                }
+
                 return mesh;
             }
 

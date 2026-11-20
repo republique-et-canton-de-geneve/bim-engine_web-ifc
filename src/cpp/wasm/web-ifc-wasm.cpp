@@ -240,8 +240,9 @@ void StreamAllMeshes(uint32_t modelID, emscripten::val callback, bool applyLinea
 
 // As StreamAllMeshes, but pulled by the client and with the spaces unless told otherwise: opens a
 // session over the meshes of the model and returns its ID, to be handed to
-// AllMeshesStreamingSessionNext. `options` is an object holding any
-// of the settings of webifc::geometry::IfcMeshIteratorSettings, the missing ones keep their default.
+// AllMeshesStreamingSessionNext. `options` is an object holding any of the settings of
+// webifc::geometry::IfcMeshIteratorSettings (colorOverrides as an array of { type, color }), the
+// missing ones keep their default.
 // Returns 0, the ID of a session that is already over, when the model is not open.
 uint32_t CreateAllMeshesStreamingSession(uint32_t modelID, emscripten::val options)
 {
@@ -258,6 +259,18 @@ uint32_t CreateAllMeshesStreamingSession(uint32_t modelID, emscripten::val optio
         emscripten::val excludedTypes = options["excludedTypes"];
         if (!excludedTypes.isUndefined())
             settings.excludedTypes = emscripten::convertJSArrayToNumberVector<uint32_t>(excludedTypes);
+
+        emscripten::val colorOverrides = options["colorOverrides"];
+        if (!colorOverrides.isUndefined())
+        {
+            settings.colorOverrides.clear();
+            uint32_t size = colorOverrides["length"].as<uint32_t>();
+            for (uint32_t i = 0; i < size; i++)
+            {
+                emscripten::val colorOverride = colorOverrides[i];
+                settings.colorOverrides[colorOverride["type"].as<uint32_t>()] = colorOverride["color"].as<glm::dvec4>();
+            }
+        }
     }
 
     uint32_t sessionID = ++lastMeshesStreamingSessionID;

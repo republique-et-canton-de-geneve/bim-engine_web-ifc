@@ -165,6 +165,11 @@ bool Nearly(double a, double b)
     return std::fabs(a - b) < 1e-9;
 }
 
+bool HasColor(const webifc::geometry::IfcPlacedGeometry &placed, double r, double g, double b, double a)
+{
+    return Nearly(placed.color.x, r) && Nearly(placed.color.y, g) && Nearly(placed.color.z, b) && Nearly(placed.color.w, a);
+}
+
 } // namespace
 
 // By default: every element that has geometry, the spaces included, but not
@@ -300,4 +305,91 @@ TEST(MeshIteratorAppliesTheLinearScalingFactorOnDemand)
 
     const double ratio = PlacementScale(scaled->geometries[0]) / PlacementScale(unscaled->geometries[0]);
     ASSERT_EQ(Nearly(ratio, 0.001), true);
+}
+
+// Out of the box the spaces come in a half transparent orange, whatever their
+// style in the model (blue here); the other elements keep theirs.
+TEST(MeshIteratorColorsTheSpacesByDefault)
+{
+    Model model;
+    auto iterator = model.Iterate();
+    const auto meshes = Drain(iterator);
+
+    const auto *space = Find(meshes, SPACE_ID);
+    ASSERT_EQ((space != nullptr), true);
+    for (const auto &placed : space->geometries)
+    {
+        ASSERT_EQ(placed.hasColor, true);
+        ASSERT_EQ(HasColor(placed, 1.0, 0.5, 0.0, 0.5), true);
+    }
+
+    const auto *proxy = Find(meshes, PROXY_ID);
+    ASSERT_EQ((proxy != nullptr), true);
+    for (const auto &placed : proxy->geometries)
+    {
+        ASSERT_EQ(placed.hasColor, true);
+        ASSERT_EQ(HasColor(placed, 1.0, 0.0, 0.0, 1.0), true);
+    }
+
+    const auto *wall = Find(meshes, WALL_ID);
+    ASSERT_EQ((wall != nullptr), true);
+    for (const auto &placed : wall->geometries)
+    {
+        ASSERT_EQ(placed.hasColor, false);
+    }
+}
+
+// The colour overrides replace the default one: any type can be recoloured,
+// styled in the model or not, and the types left out keep their own colours.
+TEST(MeshIteratorAppliesTheColorOverrides)
+{
+    Model model;
+    webifc::geometry::IfcMeshIteratorSettings settings;
+    settings.colorOverrides = {
+        {webifc::schema::IFCWALL, glm::dvec4(0.0, 1.0, 0.0, 0.25)},
+        {webifc::schema::IFCBUILDINGELEMENTPROXY, glm::dvec4(1.0, 1.0, 0.0, 1.0)}};
+    auto iterator = model.Iterate(settings);
+    const auto meshes = Drain(iterator);
+
+    const auto *wall = Find(meshes, WALL_ID);
+    ASSERT_EQ((wall != nullptr), true);
+    for (const auto &placed : wall->geometries)
+    {
+        ASSERT_EQ(placed.hasColor, true);
+        ASSERT_EQ(HasColor(placed, 0.0, 1.0, 0.0, 0.25), true);
+    }
+
+    const auto *proxy = Find(meshes, PROXY_ID);
+    ASSERT_EQ((proxy != nullptr), true);
+    for (const auto &placed : proxy->geometries)
+    {
+        ASSERT_EQ(placed.hasColor, true);
+        ASSERT_EQ(HasColor(placed, 1.0, 1.0, 0.0, 1.0), true);
+    }
+
+    const auto *space = Find(meshes, SPACE_ID);
+    ASSERT_EQ((space != nullptr), true);
+    for (const auto &placed : space->geometries)
+    {
+        ASSERT_EQ(placed.hasColor, true);
+        ASSERT_EQ(HasColor(placed, 0.0, 0.0, 1.0, 1.0), true);
+    }
+}
+
+// Without any override every element comes with the colours of the model.
+TEST(MeshIteratorKeepsTheColorsOfTheModelWithoutOverride)
+{
+    Model model;
+    webifc::geometry::IfcMeshIteratorSettings settings;
+    settings.colorOverrides = {};
+    auto iterator = model.Iterate(settings);
+    const auto meshes = Drain(iterator);
+
+    const auto *space = Find(meshes, SPACE_ID);
+    ASSERT_EQ((space != nullptr), true);
+    for (const auto &placed : space->geometries)
+    {
+        ASSERT_EQ(placed.hasColor, true);
+        ASSERT_EQ(HasColor(placed, 0.0, 0.0, 1.0, 1.0), true);
+    }
 }

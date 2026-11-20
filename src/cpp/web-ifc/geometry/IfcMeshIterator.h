@@ -7,7 +7,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <unordered_map>
 #include <vector>
+#include <glm/glm.hpp>
 #include "representation/geometry.h"
 #include "IfcGeometryProcessor.h"
 #include "../parsing/IfcLoader.h"
@@ -26,6 +28,11 @@ namespace webifc::geometry
         // unlike the "stream all meshes" callbacks, the spaces (IFCSPACE) are
         // visited. Add IFCSPACE to this list to leave them out as well.
         std::vector<uint32_t> excludedTypes = {schema::IFCOPENINGELEMENT, schema::IFCOPENINGSTANDARDCASE};
+        // Colours (r, g, b, a) given to every geometry of the elements of an IFC
+        // type, whatever the style of the model. By default the spaces (IFCSPACE)
+        // come in a half transparent orange, which keeps the elements they
+        // enclose visible. Leave it empty to keep the colours of the model.
+        std::unordered_map<uint32_t, glm::dvec4> colorOverrides = {{schema::IFCSPACE, glm::dvec4(1.0, 0.5, 0.0, 0.5)}};
     };
 
     // Pull-based traversal of the meshes of a model: the caller asks for the
@@ -58,7 +65,8 @@ namespace webifc::geometry
         IfcGeometryProcessor &_geometryProcessor;
         IfcMeshIteratorSettings _settings;
         std::vector<uint32_t> _types;
-        // express IDs of the elements of the type being visited
+        // the type being visited and the express IDs of its elements
+        uint32_t _currentType = 0;
         std::vector<uint32_t> _elements;
         size_t _nextTypeIndex = 0;
         size_t _nextElementIndex = 0;
